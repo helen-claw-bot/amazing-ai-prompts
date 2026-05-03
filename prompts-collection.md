@@ -44,9 +44,13 @@
 特殊效果: 袖口与披帛，使用5%透明度叠加
 ```
 
-**效果图：**
-<!-- ![P-G001](assets/P-G001-wumu-portrait.png) -->
-> 📎 *图片待添加*
+**效果图对比：**
+
+| Grok | FLUX | GPT Image | MJ |
+|------|------|-----------|----|
+| <!-- ![grok](assets/P-G001-wumu-portrait-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G001-wumu-portrait-flux.png) --> 📎待添加 | <!-- ![gptimg](assets/P-G001-wumu-portrait-gptimg.png) --> 📎待添加 | <!-- ![mj](assets/P-G001-wumu-portrait-mj.png) --> 📎待添加 |
+
+> 命名规则：`P-G001-wumu-portrait-{模型缩写}.png`，放入 `assets/` 目录后取消注释即可显示
 
 ---
 
@@ -136,9 +140,13 @@
 Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-length ceremonial gown with a gently trailing skirt, adorned with an exquisite white jade waist belt, wearing an ornate imperial headdress, hair rendered with fine detail, expression cold and noble, standing on a mystical stone platform amid drifting celestial mist, ethereal immortal atmosphere, backdrop of pale blue cloud sea and distant mountains, ultra-high definition, cinematic lighting, 8K resolution, perfect facial detail
 ```
 
-**效果图：**
-<!-- ![S001](assets/S001-xianxia-blue-gown.png) -->
-> 📎 *图片待添加*
+**效果图对比：**
+
+| Grok | FLUX | GPT Image | MJ |
+|------|------|-----------|----|
+| <!-- ![grok](assets/S001-xianxia-blue-gown-grok.png) --> 📎待添加 | <!-- ![flux](assets/S001-xianxia-blue-gown-flux.png) --> 📎待添加 | <!-- ![gptimg](assets/S001-xianxia-blue-gown-gptimg.png) --> 📎待添加 | <!-- ![mj](assets/S001-xianxia-blue-gown-mj.png) --> 📎待添加 |
+
+> 命名规则：`S001-xianxia-blue-gown-{模型缩写}.png`，放入 `assets/` 目录后取消注释即可显示
 
 **备注：** 原始中文稿经校对（拖曳/神情/搭配/设定等错别字已修正）后翻译
 
