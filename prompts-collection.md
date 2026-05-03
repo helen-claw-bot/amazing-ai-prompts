@@ -68,9 +68,9 @@
 
 发型：古风高盘发或半盘发，发丝顺滑整洁，自然垂落至背部。
 
-头饰：大型金银镂空花冠，花枝、蝴蝶、珍珠、水晶、宝石镶嵌，顶部孔雀羽装饰，头冠两侧垂挂长款珍珠水晶流苏步摇，细密珠链垂落肩部，额间宝石坠饰，配夸张长耳坠和多层珠宝项链。
+头饰：金色花冠，以蝴蝶和花卉为主造型，点缀珍珠，两侧垂挂珍珠流苏步摇，简洁精致。
 
-服装：华丽古风礼服汉服，粉色系（桃粉、浅粉、金粉），层层叠叠轻纱、丝绸、披帛，宽大飘袖，衣身金银刺绣，纹样花藤、祥云、蝴蝶、灵鸟，点缀珍珠、水钻、宝石、金属雕花与细密珠链，裙摆宽大拖地。
+服装：粉色系古风汉服，主体为轻纱与丝绸面料，层叠通透，披帛从肩部垂落，金线刺绣装饰衣身，纹样以花藤为主，裙摆宽大拖地。
 
 背景：纯灰色暗调摄影棚背景，干净简洁，突出人物主体。
 
@@ -83,7 +83,7 @@
 
 | Grok | FLUX | GPT Image | MJ |
 |------|------|-----------|----|
-| <!-- ![grok](assets/P-G002-pink-xianxia-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G002-pink-xianxia-flux.png) --> 📎待添加 | <!-- ![gptimg](assets/P-G002-pink-xianxia-gptimg.png) --> 📎待添加 | <!-- ![mj](assets/P-G002-pink-xianxia-mj.png) --> 📎待添加 |
+| <!-- ![grok](assets/P-G002-pink-xianxia-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G002-pink-xianxia-flux.png) --> 📎待添加 | ![gptimg v1](assets/P-G002-pink-xianxia-gptimg-v1.png) *(v1 旧版)* | <!-- ![mj](assets/P-G002-pink-xianxia-mj.png) --> 📎待添加 |
 
 > 命名规则：`P-G002-pink-xianxia-{模型缩写}.png`
 
