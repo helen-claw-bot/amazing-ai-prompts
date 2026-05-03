@@ -83,7 +83,7 @@
 
 | Grok | FLUX | GPT Image | MJ |
 |------|------|-----------|----|
-| <!-- ![grok](assets/P-G002-pink-xianxia-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G002-pink-xianxia-flux.png) --> 📎待添加 | ![gptimg v1](assets/P-G002-pink-xianxia-gptimg-v1.png) *(v1 旧版)* | <!-- ![mj](assets/P-G002-pink-xianxia-mj.png) --> 📎待添加 |
+| ![grok](assets/P-G002-pink-xianxia-grok.jpg) | 📎待添加 | ![gptimg](assets/P-G002-pink-xianxia-gptimg.png) | 📎待添加 |
 
 > 命名规则：`P-G002-pink-xianxia-{模型缩写}.png`
 
@@ -102,7 +102,7 @@
 
 | Grok | FLUX | GPT Image | MJ |
 |------|------|-----------|----|
-| <!-- ![grok](assets/P-G002a-bust-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G002a-bust-flux.png) --> 📎待添加 | <!-- ![gptimg](assets/P-G002a-bust-gptimg.png) --> 📎待添加 | <!-- ![mj](assets/P-G002a-bust-mj.png) --> 📎待添加 |
+| ![grok](assets/P-G002a-bust-grok.png) | 📎待添加 | ![gptimg](assets/P-G002a-bust-gptimg.png) | 📎待添加 |
 
 ---
 
