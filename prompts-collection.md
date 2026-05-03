@@ -7,59 +7,17 @@
 
 ## 🗂️ 分类目录
 
-- [古风仙侠](#古风仙侠)
-- [古风人像](#古风人像)
-- [写实人像](#写实人像)
-- [概念艺术](#概念艺术)
-- [其他风格](#其他风格)
+- [人像](#人像)
+- [环境](#环境)
+- [人物+环境剧照](#人物环境剧照)
 
 ---
 
-## 古风仙侠
+## 人像
 
-### 001 · 冰蓝礼服仙侠女性
+> 聚焦人物本身：面部特写、半身、全身人像，无需强调背景场景。
 
-**平台/模型：** Grok Imagine
-**日期：** 2026-05-03
-**评分：** ⭐⭐⭐⭐☆
-
-**提示词（中文）：**
-```
-超写实古风仙侠美女，身着冰蓝色曳地礼服，裙摆轻盈拖曳，腰间佩戴精致白玉腰带，头戴华贵发冠，发丝细腻，神情冷艳高贵，站在飘渺云雾间的仙境石台上，仙气十足，背景为淡蓝色云海与远山，超高清，电影级光影，8K画质，完美面部细节
-```
-
-**提示词（英文）：**
-```
-Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-length ceremonial gown with a gently trailing skirt, adorned with an exquisite white jade waist belt, wearing an ornate imperial headdress, hair rendered with fine detail, expression cold and noble, standing on a mystical stone platform amid drifting celestial mist, ethereal immortal atmosphere, backdrop of pale blue cloud sea and distant mountains, ultra-high definition, cinematic lighting, 8K resolution, perfect facial detail
-```
-
-**效果图：**
-<!-- ![001 冰蓝礼服](assets/001-xianxia-blue-gown.png) -->
-> 📎 *图片待添加*
-
-**备注：** 原始中文稿经校对（拖曳/神情/搭配/设定等错别字已修正）后翻译
-
----
-
-### 002 · （占位）
-
-**平台/模型：** _待填写_
-**日期：** _待填写_
-
-**提示词：**
-```
-（在此粘贴提示词）
-```
-
-**效果图：**
-<!-- ![002](assets/002-xxx.png) -->
-> 📎 *图片待添加*
-
----
-
-## 古风人像
-
-### 101 · 乌木长发古风仕女
+### P001 · 乌木长发古风仕女
 
 **平台/模型：** _待填写_
 **日期：** 2026-05-03
@@ -81,12 +39,12 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 ```
 
 **效果图：**
-<!-- ![101](assets/101-wumu-gufeng.png) -->
+<!-- ![P001](assets/P001-wumu-portrait.png) -->
 > 📎 *图片待添加*
 
 ---
 
-### 102 · （占位）
+### P002 · （占位）
 
 **平台/模型：** _待填写_
 **日期：** _待填写_
@@ -97,14 +55,16 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 ```
 
 **效果图：**
-<!-- ![102](assets/102-xxx.png) -->
+<!-- ![P002](assets/P002-xxx.png) -->
 > 📎 *图片待添加*
 
 ---
 
-## 写实人像
+## 环境
 
-### 201 · （占位）
+> 纯场景/景观，无人物或人物极小作为比例参照。
+
+### E001 · （占位）
 
 **平台/模型：** _待填写_
 **日期：** _待填写_
@@ -115,14 +75,40 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 ```
 
 **效果图：**
-<!-- ![201](assets/201-xxx.png) -->
+<!-- ![E001](assets/E001-xxx.png) -->
 > 📎 *图片待添加*
 
 ---
 
-## 概念艺术
+## 人物+环境剧照
 
-### 301 · （占位）
+> 人物与场景并重，有叙事感、电影质感的构图。
+
+### S001 · 冰蓝礼服仙侠剧照
+
+**平台/模型：** Grok Imagine
+**日期：** 2026-05-03
+**评分：** ⭐⭐⭐⭐☆
+
+**提示词（中文）：**
+```
+超写实古风仙侠美女，身着冰蓝色曳地礼服，裙摆轻盈拖曳，腰间佩戴精致白玉腰带，头戴华贵发冠，发丝细腻，神情冷艳高贵，站在飘渺云雾间的仙境石台上，仙气十足，背景为淡蓝色云海与远山，超高清，电影级光影，8K画质，完美面部细节
+```
+
+**提示词（英文）：**
+```
+Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-length ceremonial gown with a gently trailing skirt, adorned with an exquisite white jade waist belt, wearing an ornate imperial headdress, hair rendered with fine detail, expression cold and noble, standing on a mystical stone platform amid drifting celestial mist, ethereal immortal atmosphere, backdrop of pale blue cloud sea and distant mountains, ultra-high definition, cinematic lighting, 8K resolution, perfect facial detail
+```
+
+**效果图：**
+<!-- ![S001](assets/S001-xianxia-blue-gown.png) -->
+> 📎 *图片待添加*
+
+**备注：** 原始中文稿经校对（拖曳/神情/搭配/设定等错别字已修正）后翻译
+
+---
+
+### S002 · （占位）
 
 **平台/模型：** _待填写_
 **日期：** _待填写_
@@ -133,25 +119,7 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 ```
 
 **效果图：**
-<!-- ![301](assets/301-xxx.png) -->
-> 📎 *图片待添加*
-
----
-
-## 其他风格
-
-### 401 · （占位）
-
-**平台/模型：** _待填写_
-**日期：** _待填写_
-
-**提示词：**
-```
-（在此粘贴提示词）
-```
-
-**效果图：**
-<!-- ![401](assets/401-xxx.png) -->
+<!-- ![S002](assets/S002-xxx.png) -->
 > 📎 *图片待添加*
 
 ---
