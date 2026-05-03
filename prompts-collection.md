@@ -167,11 +167,15 @@
 
 **效果图对比：**
 
-| Grok | FLUX | GPT Image | MJ |
-|------|------|-----------|----|
-| <!-- ![grok](assets/P-G003-icebule-grok.png) --> 📎待添加 | 📎待添加 | <!-- ![gptimg](assets/P-G003-icebule-gptimg.png) --> 📎待添加 | 📎待添加 |
+| Grok | Gemini | GPT Image（暗色） | GPT Image（亮色） |
+|------|--------|------------------|------------------|
+| ![grok](assets/P-G003-iceblue-grok.jpg) | ![gemini](assets/P-G003-iceblue-gemini.png) | ![gptimg-dark](assets/P-G003-iceblue-gptimg-dark.png) | ![gptimg-light](assets/P-G003-iceblue-gptimg-light.png) |
 
-> 命名规则：`P-G003-iceblue-{模型缩写}.png`
+**特写变体（P-G003a）：**
+
+| GPT Image（暗色特写） | GPT Image（亮色特写） |
+|----------------------|----------------------|
+| ![bust-dark](assets/P-G003a-bust-gptimg-dark.png) | ![bust-light](assets/P-G003a-bust-gptimg-light.png) |
 
 ---
 
@@ -205,11 +209,9 @@
 
 **效果图对比：**
 
-| Grok | FLUX | GPT Image | MJ |
-|------|------|-----------|----|
-| <!-- ![grok](assets/P-G004-fantasy-grok.png) --> 📎待添加 | 📎待添加 | <!-- ![gptimg](assets/P-G004-fantasy-gptimg.png) --> 📎待添加 | 📎待添加 |
-
-> 命名规则：`P-G004-fantasy-{模型缩写}.png`
+| Grok | Gemini | GPT Image（全身） | GPT Image（特写） |
+|------|--------|------------------|------------------|
+| ![grok](assets/P-G004-fantasy-grok.jpg) | ![gemini](assets/P-G004-fantasy-gemini.png) | ![gptimg](assets/P-G004-fantasy-gptimg.png) | ![bust](assets/P-G004a-bust-gptimg.png) |
 
 ---
 
