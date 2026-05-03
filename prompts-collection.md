@@ -48,7 +48,7 @@
 
 | Grok | FLUX | GPT Image | MJ |
 |------|------|-----------|----|
-| <!-- ![grok](assets/P-G001-wumu-portrait-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G001-wumu-portrait-flux.png) --> 📎待添加 | <!-- ![gptimg](assets/P-G001-wumu-portrait-gptimg.png) --> 📎待添加 | <!-- ![mj](assets/P-G001-wumu-portrait-mj.png) --> 📎待添加 |
+| <!-- ![grok](assets/P-G001-wumu-portrait-grok.png) --> 📎待添加 | <!-- ![flux](assets/P-G001-wumu-portrait-flux.png) --> 📎待添加 | ![gptimg](assets/P-G001-wumu-portrait-gptimg.png) | <!-- ![mj](assets/P-G001-wumu-portrait-mj.png) --> 📎待添加 |
 
 > 命名规则：`P-G001-wumu-portrait-{模型缩写}.png`，放入 `assets/` 目录后取消注释即可显示
 
