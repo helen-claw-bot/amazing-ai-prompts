@@ -41,39 +41,6 @@
 
 ---
 
-### ❓ git push 报 Authentication failed
-
-**平台：** GitHub
-**时间：** 2026-05-03
-**现象：** `git push` 提示输入用户名密码，最终报 Authentication failed
-
-**原因：**
-GitHub 2021年起禁止密码推送，必须用 Personal Access Token 或 SSH
-
-**解决方案：**
-✅ 已用 SSH 解决：
-```bash
-git remote set-url origin git@github.com:用户名/仓库名.git
-```
-SSH key 配好后永久免密推送。
-
----
-
-### ❓ git clone / push 报 Could not resolve host: github.com
-
-**平台：** GitHub（本地/服务器）
-**时间：** 2026-05-03
-**现象：** HTTPS 方式访问 GitHub 失败，DNS 无法解析
-
-**原因：**
-网络环境 DNS 污染或防火墙屏蔽 GitHub
-
-**解决方案：**
-- 改用 SSH 方式（不走 DNS，走 SSH 端口 443/22）
-- 或配置代理/修改 `/etc/hosts` 添加 GitHub IP
-
----
-
 ## 📌 待研究问题
 
 > 遇到新问题随时追加
