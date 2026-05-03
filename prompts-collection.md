@@ -8,6 +8,7 @@
 ## 🗂️ 分类目录
 
 - [古风仙侠](#古风仙侠)
+- [古风人像](#古风人像)
 - [写实人像](#写实人像)
 - [概念艺术](#概念艺术)
 - [其他风格](#其他风格)
@@ -33,7 +34,6 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 ```
 
 **效果图：**
-<!-- 把生成的图片放到 assets/001-xianxia-blue-gown.png，然后取消注释下一行 -->
 <!-- ![001 冰蓝礼服](assets/001-xianxia-blue-gown.png) -->
 > 📎 *图片待添加*
 
@@ -45,7 +45,6 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 
 **平台/模型：** _待填写_
 **日期：** _待填写_
-**评分：** ⭐⭐⭐⭐⭐
 
 **提示词：**
 ```
@@ -58,7 +57,7 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 
 ---
 
-## 写实人像
+## 古风人像
 
 ### 101 · 乌木长发古风仕女
 
@@ -87,7 +86,23 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 
 ---
 
-## 概念艺术
+### 102 · （占位）
+
+**平台/模型：** _待填写_
+**日期：** _待填写_
+
+**提示词：**
+```
+（在此粘贴提示词）
+```
+
+**效果图：**
+<!-- ![102](assets/102-xxx.png) -->
+> 📎 *图片待添加*
+
+---
+
+## 写实人像
 
 ### 201 · （占位）
 
@@ -105,7 +120,7 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 
 ---
 
-## 其他风格
+## 概念艺术
 
 ### 301 · （占位）
 
@@ -119,6 +134,24 @@ Ultra-photorealistic ancient Chinese xianxia beauty, wearing an ice-blue floor-l
 
 **效果图：**
 <!-- ![301](assets/301-xxx.png) -->
+> 📎 *图片待添加*
+
+---
+
+## 其他风格
+
+### 401 · （占位）
+
+**平台/模型：** _待填写_
+**日期：** _待填写_
+
+**提示词：**
+```
+（在此粘贴提示词）
+```
+
+**效果图：**
+<!-- ![401](assets/401-xxx.png) -->
 > 📎 *图片待添加*
 
 ---
