@@ -9,11 +9,12 @@
 
 ```
 amazing-ai-prompts/
-  image-gen-notes.md        # 本文件：生图经验库
+  image-gen-notes.md          # 本文件：生图经验库 & 技巧
+  prompts-collection.md       # 提示词收藏库（含效果图占位）
+  issues-log.md               # 踩坑问题记录
+  assets/                     # 效果图存放目录
   research/
-    ai-image-video-apps.md  # AI 生图/生视频应用调研
-  cases/                    # 成功/失败案例（待添加）
-  prompts/                  # 提示词片段库（待添加）
+    ai-image-video-apps.md    # AI 生图/生视频应用调研
 ```
 
 ---
