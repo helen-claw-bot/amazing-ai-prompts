@@ -4,7 +4,7 @@
 
 ---
 
-## grokprompts.app
+## grokprompts.app  √
 
 **网站定位：** AI 文生图/生视频平台，集成多种 AI 模型，同时提供提示词库
 
@@ -55,8 +55,8 @@
 
 ## 其他调研产品（待补充）
 
-- **ourdream.ai** — 成人向 AI 内容平台，提供多模型选择（Hero/FLUX/GPT Image-2 等）
-- **PromptHero** — 提示词社区，图片+提示词展示，多模型支持
+- **ourdream.ai** — https://ourdream.ai/ 成人向 AI 内容平台，质量很差，只可 pose reference 
+- **PromptHero** — 提示词社区，图片+提示词展示，多模型支持 √
 - **ComfyUI** — 本地节点式生图工作流工具
 - **SillyTavern** — AI 角色扮演聊天前端，支持多后端
 - **GitHub: system_prompts_leaks** — 各大 AI 系统提示词泄露合集
@@ -76,3 +76,11 @@
 | Hero | 内容限制最宽松 |
 | Qwen 2（通义千问） | 提示词理解强 |
 | Crystal Upscaler | 图片放大 |
+
+
+
+---
+
+
+
+
