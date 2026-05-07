@@ -61,6 +61,20 @@ https://huggingface.co/black-forest-labs/FLUX.1-dev
 #### 下载方式二：ModelScope（国内直连）
 ```
 https://modelscope.cn/models/black-forest-labs/FLUX.1-dev
+
+# helen实操
+
+pip install modelscope
+
+modelscope download --model black-forest-labs/FLUX.1-dev flux1-dev.safetensors --local_dir D:\\AI\\ComfyUI_models\\checkpoints
+
+modelscope download --model black-forest-labs/FLUX.1-dev ae.safetensors --local_dir D:\\AI\\ComfyUI_models\\vae
+
+modelscope download --model black-forest-labs/FLUX.1-dev  text_encoder_2/model-00001-of-00002.safetensors --local_dir D:\\AI\\ComfyUI_models\\clip
+
+modelscope download --model black-forest-labs/FLUX.1-dev  text_encoder_2/model-00002-of-00002.safetensors --local_dir D:\\AI\\ComfyUI_models\\clip
+
+
 ```
 
 #### 下载方式三：liblib.ai（国内，推荐）
