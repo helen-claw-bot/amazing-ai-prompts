@@ -104,6 +104,10 @@ modelscope download --model black-forest-labs/FLUX.1-dev  text_encoder_2/model-0
 
 modelscope download --model black-forest-labs/FLUX.1-dev  text_encoder_2/model-00002-of-00002.safetensors --local_dir D:\\AI\\ComfyUI_models\\clip
 
+modelscope download --model Comfy-Org/flux1-dev flux1-dev-fp8.safetensors --local_dir D:\\AI\\ComfyUI_models\\checkpoints
+
+# 下载PuLID
+modelscope download --model shiertier/ComfyUI-pulid ip-adapter_pulid_sdxl_fp16.safetensors --local_dir D:\\AI\\ComfyUI_models\\loras
 
 ```
 
@@ -126,6 +130,7 @@ https://www.liblib.art/
 
 ```bash
 cd D:\AI\ComfyUI\custom_nodes
+git clone https://github.com/Comfy-Org/ComfyUI-Manager.git
 git clone https://github.com/ltdrdata/ComfyUI-Manager
 ```
 

@@ -209,9 +209,9 @@
 
 **效果图对比：**
 
-| Grok | Gemini | GPT Image（全身） | GPT Image（特写） |
-|------|--------|------------------|------------------|
-| ![grok](assets/P-G004-fantasy-grok.jpg) | ![gemini](assets/P-G004-fantasy-gemini.png) | ![gptimg](assets/P-G004-fantasy-gptimg.png) | ![bust](assets/P-G004a-bust-gptimg.png) |
+| Grok | Gemini | GPT Image（全身） | GPT Image（特写） | FLUX |
+|------|--------|------------------|------------------|------------------|
+| ![grok](assets/P-G004-fantasy-grok.jpg) | ![gemini](assets/P-G004-fantasy-gemini.png) | ![gptimg](assets/P-G004-fantasy-gptimg.png) | ![bust](assets/P-G004a-bust-gptimg.png) | ![bust2](assets/P-G004-fantasy-fluximg.png)
 
 **FLUX 本地优化版提示词（英文）：**
 > 版本：2026-05-07，针对 FLUX.1 Dev 调优，改动：鼠尾草绿配色、成熟女性身材、无妆裸颜、真实皮肤质感、相机参数
