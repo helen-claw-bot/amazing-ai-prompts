@@ -17,110 +17,123 @@
 
 ---
 
-## 二、安装 ComfyUI（秋叶整合包）
+## 二、安装 ComfyUI（官方标准安装）
 
-### Step 1 — 下载整合包
+官方 Wiki：https://comfyui-wiki.com/en/install
 
-- 前往 B站 搜索「秋叶 ComfyUI 整合包」
-- 官方地址（备用）：https://github.com/aigc-apps/sd-webui-EasyPhoto
+按官方文档安装完成后：
+- 桌面应用位置：`D:\AI\ComfyUI`
+- Python 虚拟环境 / 库（含 torch ~7GB）：`C:\Users\<用户名>\Documents\ComfyUI`
 
-推荐使用**秋叶整合包**，已内置 Python 环境、CUDA、常用节点，无需手动配置环境。
+> ⚠️ **不要用秋叶整合包**，官方安装更干净，版本更新更可控。
 
-### Step 2 — 安装到 D 盘
-
-安装时修改目标路径：
-```
-D:\AI\ComfyUI
-```
-
-> ⚠️ 不要装在 C 盘！模型文件大，会撑爆系统盘。
-
-### Step 3 — 验证安装
-
-安装完成后，运行 `启动ComfyUI.bat`，浏览器自动打开：
+启动后浏览器访问：
 ```
 http://127.0.0.1:8188
 ```
 
-看到节点编辑界面即安装成功 ✅
+### 关于内容过滤器
+
+官方安装版本（当前最新）**无内置安全过滤器**，FLUX.1 Dev 本身也无内容审查，影视服装造型等需求直接出图不受限制。
 
 ---
 
-## 三、下载 FLUX 模型
+## 三、配置模型路径（重要！先做）
 
-### FLUX.1 Dev（推荐，质量最高）
+**将模型目录指向 D 盘**，避免模型文件占满 C 盘（FLUX 底模 24GB，全套 35GB+）。
 
-**模型文件大小：约 24GB**，需要提前准备好空间。
+### Step 1 — 在 D 盘建模型目录
 
-#### 下载方式一：HuggingFace（需要梯子）
 ```
-https://huggingface.co/black-forest-labs/FLUX.1-dev
+D:\AI\ComfyUI_models\
+  ├── checkpoints\
+  ├── clip\
+  ├── vae\
+  ├── loras\
+  ├── controlnet\
+  └── insightface\
 ```
-下载文件：`flux1-dev.safetensors`
 
-#### 下载方式二：ModelScope（国内直连）
+### Step 2 — 创建 extra_model_paths.yaml
+
+在 `D:\AI\ComfyUI\` 目录下新建文件 `extra_model_paths.yaml`，内容：
+
+```yaml
+my_models:
+    base_path: D:\AI\ComfyUI_models
+    checkpoints: checkpoints
+    clip: clip
+    vae: vae
+    loras: loras
+    controlnet: controlnet
+    insightface: insightface
+```
+
+### Step 3 — 重启 ComfyUI
+
+重启后 ComfyUI 自动识别 D 盘模型目录 ✅
+
+---
+
+## 四、下载 FLUX 模型
+
+### 所需文件清单（约 35GB）
+
+| 文件 | 大小 | 放置路径 |
+|------|------|----------|
+| `flux1-dev.safetensors` | ~24GB | `checkpoints\` |
+| `ae.safetensors`（VAE） | ~335MB | `vae\` |
+| `clip_l.safetensors` | ~246MB | `clip\` |
+| `t5xxl_fp16.safetensors` | ~9.8GB | `clip\` |
+
+### 下载来源（推荐国内，无需梯子）
+
+**ModelScope（魔搭）：**
 ```
 https://modelscope.cn/models/black-forest-labs/FLUX.1-dev
 ```
 
-#### 下载方式三：liblib.ai（国内，推荐）
+上述四个文件在同一页面均可找到。
+
+**备用：liblib.art**
 ```
 https://www.liblib.art/
 ```
-搜索「FLUX.1 Dev」，直接下载 safetensors 文件。
-
-### 放置路径
-
-下载完成后，将模型文件放到：
-```
-D:\AI\ComfyUI\models\checkpoints\flux1-dev.safetensors
-```
-
-### 配套 VAE 和 CLIP 模型
-
-FLUX 需要额外的 VAE 和 CLIP 文本编码器：
-
-| 文件 | 放置路径 |
-|------|----------|
-| `ae.safetensors`（VAE） | `D:\AI\ComfyUI\models\vae\` |
-| `clip_l.safetensors` | `D:\AI\ComfyUI\models\clip\` |
-| `t5xxl_fp16.safetensors` | `D:\AI\ComfyUI\models\clip\` |
-
-> 💡 以上文件在 HuggingFace / ModelScope 上 FLUX 模型页面均可找到。
+搜索「FLUX.1 Dev」。
 
 ---
 
-## 四、安装换脸 / 角色一致性节点
+## 五、安装换脸 / 角色一致性节点
 
-### 4.1 安装 ComfyUI Manager
+### 5.1 安装 ComfyUI Manager（必装）
 
-ComfyUI Manager 是插件管理器，必装。
-
-1. 打开 ComfyUI 界面 → 点击右上角 `Manager`
-2. 如果没有，手动安装：
+1. 打开 ComfyUI → 点击右上角 `Manager`
+2. 若无，手动安装：
 
 ```bash
-# 在 ComfyUI\custom_nodes\ 目录下运行
+cd D:\AI\ComfyUI\custom_nodes
 git clone https://github.com/ltdrdata/ComfyUI-Manager
 ```
 
-重启 ComfyUI 即可看到 Manager 按钮。
+重启 ComfyUI 生效。
 
-### 4.2 安装 InstantID（推荐用于角色一致性）
+### 5.2 安装 PuLID（换脸 + 角色一致性，首选）
 
-通过 Manager 搜索安装：`ComfyUI_InstantID`
+通过 Manager 搜索：`ComfyUI PuLID Flux`
 
 或手动：
 ```bash
 cd D:\AI\ComfyUI\custom_nodes
-git clone https://github.com/cubiq/ComfyUI_InstantID
+git clone https://github.com/cubiq/PuLID_ComfyUI
 ```
 
-所需额外模型：
-- `ip-adapter.bin` → `D:\AI\ComfyUI\models\instantid\`
-- InsightFace 人脸检测模型 → `D:\AI\ComfyUI\models\insightface\`
+所需模型：
+- `ip-adapter_pulid_flux_v0.9.1.safetensors`（~1.6GB）→ `D:\AI\ComfyUI_models\loras\`
+- InsightFace `buffalo_l` → `D:\AI\ComfyUI_models\insightface\models\buffalo_l\`
 
-### 4.3 安装 ReActor（换脸节点）
+> PuLID 相比 InstantID 在 FLUX 上兼容性更好，推荐优先使用。
+
+### 5.3 安装 ReActor（换脸节点，备选）
 
 ```bash
 cd D:\AI\ComfyUI\custom_nodes
@@ -128,11 +141,9 @@ git clone https://github.com/Gourieff/comfyui-reactor-node
 ```
 
 所需模型：
-- `inswapper_128.onnx` → `D:\AI\ComfyUI\models\insightface\`
+- `inswapper_128.onnx` → `D:\AI\ComfyUI_models\insightface\`
 
-> 📥 inswapper 模型下载：https://github.com/deepinsight/insightface （需梯子，或在 ModelScope 搜索）
-
-### 4.4 安装 IPAdapter Plus（风格/人脸迁移）
+### 5.4 安装 IPAdapter Plus（风格/人脸迁移）
 
 ```bash
 cd D:\AI\ComfyUI\custom_nodes
@@ -141,79 +152,76 @@ git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus
 
 ---
 
-## 五、工作流目录结构
+## 六、目录结构总览
 
 ```
-D:\AI\ComfyUI\
-├── models\
-│   ├── checkpoints\     ← FLUX.1 Dev、SDXL 等主模型
-│   ├── vae\             ← ae.safetensors
-│   ├── clip\            ← clip_l、t5xxl
-│   ├── loras\           ← LoRA 微调模型
-│   ├── instantid\       ← InstantID 模型
-│   └── insightface\     ← ReActor 换脸模型
-├── custom_nodes\        ← 插件
-│   ├── ComfyUI-Manager\
-│   ├── ComfyUI_InstantID\
-│   ├── comfyui-reactor-node\
-│   └── ComfyUI_IPAdapter_plus\
-└── output\              ← 生成图片（可改到 E 盘）
+D:\AI\ComfyUI\                        ← ComfyUI 桌面应用
+├── extra_model_paths.yaml            ← 模型路径配置（手动创建）
+└── custom_nodes\
+    ├── ComfyUI-Manager\
+    ├── PuLID_ComfyUI\
+    ├── comfyui-reactor-node\
+    └── ComfyUI_IPAdapter_plus\
 
-E:\AI项目\              ← 素材 + 工程文件
-├── 参考图\
-├── 模特照片\
-├── 分镜\
-└── 产出\
+D:\AI\ComfyUI_models\                 ← 所有模型（D盘）
+├── checkpoints\  ← flux1-dev.safetensors
+├── vae\          ← ae.safetensors
+├── clip\         ← clip_l + t5xxl_fp16
+├── loras\        ← PuLID、风格 LoRA
+├── controlnet\
+└── insightface\  ← buffalo_l、inswapper
+
+C:\Users\<用户名>\Documents\ComfyUI\  ← Python 环境（含 torch ~7GB，不动）
 ```
 
 ---
 
-## 六、验证工作流（第一次出图）
+## 七、验证工作流（第一次出图）
 
-1. 启动 ComfyUI，打开 `http://127.0.0.1:8188`
-2. 加载默认工作流（`Load Default` 按钮）
-3. 在 `CheckpointLoaderSimple` 节点选择 `flux1-dev.safetensors`
-4. 输入一段 prompt，点击 `Queue Prompt`
-5. 首次出图可能需要 30-60 秒（模型加载），之后每张约 10-30 秒
+1. 启动 ComfyUI → 打开 `http://127.0.0.1:8188`
+2. 加载默认工作流（`Load Default`）
+3. `CheckpointLoaderSimple` 节点选择 `flux1-dev.safetensors`
+4. 输入 prompt，点击 `Queue Prompt`
+5. 首次出图约 30-60 秒（模型加载），后续每张约 15-30 秒
 
 ---
 
-## 七、AI 影视制作工作流（核心需求）
+## 八、AI 影视制作工作流（核心需求）
 
-| 需求 | 工具 | 节点 |
+| 需求 | 方案 | 节点 |
 |------|------|------|
 | 高质量文生图 | FLUX.1 Dev | 默认工作流 |
 | 真人换脸 | ReActor | comfyui-reactor-node |
-| 角色一致性（同人不同场景） | InstantID + IPAdapter | ComfyUI_InstantID |
+| 角色一致性（同人不同场景） | PuLID | PuLID_ComfyUI |
 | 风格锁定（古风/现代） | IPAdapter | ComfyUI_IPAdapter_plus |
 | 定妆照生成 | FLUX + LoRA | 加载对应 LoRA |
 
 ---
 
-## 八、常见问题
+## 九、常见问题
 
 ### Q: 显存不足（OOM）
 - FLUX 标准版需要 12GB，RTX 3060 12GB 刚好满足
-- 如果报 OOM，在启动参数加 `--lowvram` 或 `--fp8`
+- 报 OOM 时，在启动参数加 `--fp8` 或 `--lowvram`
 
 ### Q: 模型加载失败
-- 检查文件路径是否正确
-- 检查文件是否完整下载（用 hash 验证）
+- 检查 `extra_model_paths.yaml` 路径是否正确（注意反斜杠）
+- 检查文件是否完整下载
 
 ### Q: 生成速度慢
 - RTX 3060 生成 1024x1024 约 20-40 秒，正常
-- 可以先用 512x512 调 prompt，满意后再出大图
+- 调 prompt 阶段先用 512x512，满意后出大图
 
 ---
 
-## 九、资源汇总
+## 十、资源汇总
 
 | 资源 | 链接 |
 |------|------|
-| ComfyUI 官方 | https://github.com/comfyanonymous/ComfyUI |
-| ComfyUI Wiki（中文） | https://comfyui-wiki.com/zh |
+| ComfyUI 官方 Wiki | https://comfyui-wiki.com/en/install |
+| ComfyUI GitHub | https://github.com/comfyanonymous/ComfyUI |
 | FLUX 模型（ModelScope） | https://modelscope.cn/models/black-forest-labs/FLUX.1-dev |
-| liblib.ai（国内模型站） | https://www.liblib.art |
+| liblib.art（国内模型站） | https://www.liblib.art |
 | ComfyUI Manager | https://github.com/ltdrdata/ComfyUI-Manager |
 
 ---
