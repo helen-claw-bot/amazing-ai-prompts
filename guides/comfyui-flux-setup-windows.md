@@ -325,3 +325,25 @@ ModelScope 下载源：`https://modelscope.cn/models/QuanSun/EVA-CLIP/files`
 | buffalo_l (5x .onnx) | ~340MB | .insightface\models\buffalo_l\ | ModelScope |
 | detection_Resnet50_Final.pth | ~109MB | models\facexlib\ | ModelScope |
 
+
+---
+
+### 坑6：PuLID 插件与新版 ComfyUI 不兼容（latent_shapes 参数）
+**错误：** `TypeError: pulid_outer_sample_wrappers_with_override() got an unexpected keyword argument 'latent_shapes'`  
+**原因：** ComfyUI 新版本在采样器调用时加入了 `latent_shapes` 参数，但 PuLID 插件（comfyui_pulid_flux_ll v1.1.4，最后更新 2025-02-19）的函数签名没有接收这个参数。  
+**解决：** 手动修改插件源码，在函数定义里加 `**kwargs`：
+
+文件路径：`C:\Users\home\Documents\ComfyUI\custom_nodes\comfyui_pulid_flux_ll\pulidflux.py`
+
+搜索 `pulid_outer_sample_wrappers_with_override`，找到函数定义，在 `seed=None` 后面加 `, **kwargs`：
+
+```python
+# 改前
+def pulid_outer_sample_wrappers_with_override(wrapper_executor, noise, latent_image, sampler, sigmas, denoise_mask=None, callback=None, disable_pbar=False, seed=None):
+
+# 改后
+def pulid_outer_sample_wrappers_with_override(wrapper_executor, noise, latent_image, sampler, sigmas, denoise_mask=None, callback=None, disable_pbar=False, seed=None, **kwargs):
+```
+
+保存后重启 ComfyUI 即可。
+
