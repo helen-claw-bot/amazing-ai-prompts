@@ -213,6 +213,29 @@
 |------|--------|------------------|------------------|
 | ![grok](assets/P-G004-fantasy-grok.jpg) | ![gemini](assets/P-G004-fantasy-gemini.png) | ![gptimg](assets/P-G004-fantasy-gptimg.png) | ![bust](assets/P-G004a-bust-gptimg.png) |
 
+**FLUX 本地优化版提示词（英文）：**
+> 版本：2026-05-07，针对 FLUX.1 Dev 调优，改动：鼠尾草绿配色、成熟女性身材、无妆裸颜、真实皮肤质感、相机参数
+
+```
+Professional ancient fantasy portrait photography, 8K ultra-high resolution, photorealistic, full body front-facing shot, 2:3 vertical composition, full figure in frame.
+
+Subject: Beautiful Asian woman, 22 years old, voluptuous figure, full curves, hourglass body shape, oval face, almond-shaped eyes, fair cool-toned skin with natural pores and realistic skin texture, delicate refined features, alluring and charming temperament, elegant bearing, no makeup, subtle lip tint, bare-faced natural beauty, natural bare nails, no nail polish, fingers clearly visible and naturally posed.
+
+Hair: Dark brown long hair, half-down style, naturally wavy ends cascading over shoulders and back.
+
+Headpiece: Delicate gold hairpin crown with genuine metal sheen, warm 18K gold luster, intricate filigree craftsmanship, adorned with white jade and turquoise cabochons, polished jade surface with translucent depth, soft silk ribbon ties; long slender white jade and pearl drop earrings with realistic gemstone translucency.
+
+Outfit: Ancient fantasy exotic style, sage green and gold color palette. Top: sage green sheer chiffon crop bustier with real gold-trimmed embroidery, turquoise gemstone accent with realistic stone texture, gold chain waist cincher with cascading fine chain tassels, midriff exposed showing natural waist curve. Arms: loose sheer detached sleeves in matching sage chiffon with soft fabric drape, secured at wrists with 18K gold arm cuffs with pearl pendants. Skirt: layered flowing sheer chiffon maxi skirt, wide voluminous draping hem.
+
+Background: Light gray studio backdrop, bright and clean.
+
+Lighting: Soft frontal diffused light, rim lighting defining hair strands and garment edges, emphasizing sheer fabric translucency and metallic accessory texture.
+
+Overall: Ancient fantasy alluring mature aesthetic, photographic realism, natural skin texture, realistic jewelry material, not illustration, not cartoon, not anime, not teenager.
+
+Shot on Canon EOS R5, 85mm lens, f/2.8, ISO 400, natural light, skin pores visible, hyper-realistic skin detail, no retouching.
+```
+
 ---
 
 ### 现代
