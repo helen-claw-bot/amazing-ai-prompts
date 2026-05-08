@@ -293,7 +293,7 @@ ModelScope 下载源：`https://modelscope.cn/models/QuanSun/EVA-CLIP/files`
 | ae.safetensors | ~335MB | models\vae\ | ModelScope |
 | t5xxl_fp16.safetensors | ~9.8GB | models\clip\ | HuggingFace |
 | clip_l.safetensors | ~246MB | models\clip\ | HuggingFace |
-| pulid_flux_v0.9.1.safetensors | ~1.6GB | models\loras\ | HuggingFace |
+| pulid_flux_v0.9.1.safetensors | ~1.6GB | models\pulid\ | ModelScope |
 | EVA02_CLIP_L_336_psz14_s6B.pt | ~3.5GB | models\clip\ | ModelScope |
 | antelopev2 (5x .onnx) | ~440MB | .insightface\models\antelopev2\ | ModelScope |
 | buffalo_l (5x .onnx) | ~340MB | .insightface\models\buffalo_l\ | ModelScope |
