@@ -116,6 +116,14 @@ modelscope download --model libfishopen/facexlib parsing_bisenet.pth --local_dir
 
 上述四个文件在同一页面均可找到。
 
+
+#### 配置model软连接
+
+```bash
+cmd /c mklink /J "C:\Users\home\Documents\ComfyUI\models\facexlib" "D:\AI\ComfyUI_models\facexlib"
+```
+
+
 **备用：liblib.art**
 ```
 https://www.liblib.art/
@@ -171,6 +179,33 @@ git clone https://github.com/Gourieff/comfyui-reactor-node
 cd D:\AI\ComfyUI\custom_nodes
 git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus
 ```
+
+
+
+## PuLID
+
+PuLID 是一个角色/人脸保持的方案/模型
+
+
+#### facexlib 人脸工具库(脸部检测)
+
+path: `C:\Users\home\Documents\ComfyUI\.venv\Lib\site-packages\facexlib\`
+
+
+#### insightface identity recognization（认人）
+
+`ComfyUI/models/insightface/models/antelopev2/`
+
+问题: antelopev2 是insightface v0.7 (2022发布) 过时很久了
+
+#### EVA_CLIP
+
+
+```
+https://huggingface.co/QuanSun/EVA-CLIP/blob/main/EVA02_CLIP_L_336_psz14_s6B.pt
+
+```
+
 
 ---
 
