@@ -183,15 +183,61 @@ install.bat
 
 | 模型 | 路径 | 说明 |
 |------|------|------|
-| `inswapper_128.onnx` | `models\insightface\` | 主换脸模型 |
+| `inswapper_128.onnx` | `models\insightface\` | 主换脸模型（默认） |
 | `buffalo_l`（5x .onnx） | `models\insightface\models\buffalo_l\` | 人脸识别，首次启动自动下 |
+| `GFPGANv1.4.pth` | `models\facerestore_models\` | **必须手动下载**，否则启动时联网超时导致节点加载失败 |
 
-手动下载地址：`https://huggingface.co/datasets/Gourieff/ReActor/tree/main/models`
+手动下载地址（国内用 hf-mirror）：
+```
+https://hf-mirror.com/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/GFPGANv1.4.pth
+```
+
+> ⚠️ **重要：** ReActor 启动时会检查 `models\facerestore_models\` 目录，若为空则自动联网下载。国内网络会超时，导致所有 ReActor 节点加载失败（报 `URLError`）。必须提前手动放入至少一个 face restore 模型。
 
 **可选增强模型：**
-- Face restoration: `models\facerestore_models\`
+- `codeformer-v0.1.0.pth` → `models\facerestore_models\`（细节更锐利，与 GFPGAN 二选一对比）
 - ReSwapper（inswapper 替代）: `models\reswapper\`
-- HyperSwap（最新换脸模型）: `models\hyperswap\`
+- HyperSwap（高分辨率换脸，推荐）: `models\hyperswap\`
+
+**换脸模型对比：**
+
+| 模型 | 分辨率 | 效果 | 路径 |
+|------|--------|------|------|
+| `inswapper_128.onnx` | 128px | 通用，速度快 | `models\insightface\` |
+| `hyperswap_1b_256.onnx` | 256px | 细节更好，推荐 | `models\hyperswap\` |
+| `reswapper_256.onnx` | 256px | inswapper 改进版 | `models\reswapper\` |
+
+> 💡 HyperSwap 文件实际存放在 `D:\AI\ComfyUI_models\insightface\`，用 Junction 软链接映射：
+> ```powershell
+> New-Item -ItemType Junction -Path "C:\Users\home\Documents\ComfyUI\models\hyperswap" -Target "D:\AI\ComfyUI_models\insightface"
+> ```
+
+**ReActor 节点说明：**
+
+| 参数 | 建议值 | 说明 |
+|------|--------|------|
+| `swap_model` | `hyperswap_1b_256.onnx` | 换脸主模型，优先用 hyperswap |
+| `face_restore_model` | `GFPGANv1.4.pth` | 换脸后修复画质 |
+| `face_restore_visibility` | `0.7` | 修复强度，过高会有塑料感 |
+| `detect_gender_input/source` | 按实际设置 | 换男性演员记得改为 male |
+| `input/source_faces_index` | `0` | 多人图时指定第几张脸（0=第一张） |
+
+**Face Booster 节点（可选，进一步提升清晰度）：**
+
+| 参数 | 建议值 | 说明 |
+|------|--------|------|
+| `visibility` | `0.8` | Boost 强度，过高会过度锐化 |
+| `interpolation` | `Lanczos` | 缩放算法，保持默认 |
+
+**注意：ReActor 只替换皮肤纹理和五官，不改变脸型轮廓。** 需要换脸型请用 PuLID（生成阶段注入身份）。
+
+**NSFW 检测器（默认开启）：**
+检测到裸露内容会跳过该帧。如需关闭，编辑 `nodes.py`，找到：
+```python
+if not sfw.nsfw_image(img_byte_arr, NSFWDET_MODEL_PATH):
+    pil_images_sfw.append(img)
+```
+将 `if` 那行注释掉，`append` 行保留（去掉缩进或保持原缩进均可）。
 
 ### 5.4 安装 IPAdapter Plus（风格/人脸迁移）
 
