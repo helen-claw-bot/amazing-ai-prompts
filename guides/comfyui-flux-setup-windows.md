@@ -120,6 +120,29 @@ modelscope download --model libfishopen/facexlib parsing_bisenet.pth --local_dir
 
 ## 五、安装换脸 / 角色一致性节点
 
+### 5.0 激活 ComfyUI 虚拟环境
+
+ComfyUI 的 Python 虚拟环境位于 `C:\Users\home\Documents\ComfyUI\.venv`，需要安装额外 Python 包时先激活：
+
+**PowerShell：**
+```powershell
+C:\Users\home\Documents\ComfyUI\.venv\Scripts\Activate.ps1
+```
+
+**CMD：**
+```cmd
+C:\Users\home\Documents\ComfyUI\.venv\Scripts\activate.bat
+```
+
+激活后命令行前缀会变成 `(.venv)`，再执行 `pip install` 即可。
+
+> ⚠️ PowerShell 若报"执行策略"错误，先运行一次：
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+---
+
 ### 5.1 安装 ComfyUI Manager（必装）
 
 1. 打开 ComfyUI → 点击右上角 扩展商店 `Extensions`
