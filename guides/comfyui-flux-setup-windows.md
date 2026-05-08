@@ -166,13 +166,32 @@ git clone https://github.com/lldacing/ComfyUI_PuLID_Flux_ll.git
 
 ### 5.3 安装 ReActor（换脸节点，备选）
 
+> ✅ 新版 ReActor 已重写核心，**不再依赖 InsightFace Python 库**，也不需要 C++ Build Tools，安装大幅简化。
+
+**安装方式一：ComfyUI Manager**
+搜索 `ReActor` 直接安装。
+
+**安装方式二：手动**
 ```bash
 cd D:\AI\ComfyUI\custom_nodes
-git clone https://github.com/Gourieff/comfyui-reactor-node
+git clone https://github.com/Gourieff/ComfyUI-ReActor
+cd ComfyUI-ReActor
+install.bat
 ```
 
-所需模型：
-- `inswapper_128.onnx` → `D:\AI\ComfyUI_models\insightface\`
+**所需模型（install.bat 会自动下载，国内网络可能超时需手动补）：**
+
+| 模型 | 路径 | 说明 |
+|------|------|------|
+| `inswapper_128.onnx` | `models\insightface\` | 主换脸模型 |
+| `buffalo_l`（5x .onnx） | `models\insightface\models\buffalo_l\` | 人脸识别，首次启动自动下 |
+
+手动下载地址：`https://huggingface.co/datasets/Gourieff/ReActor/tree/main/models`
+
+**可选增强模型：**
+- Face restoration: `models\facerestore_models\`
+- ReSwapper（inswapper 替代）: `models\reswapper\`
+- HyperSwap（最新换脸模型）: `models\hyperswap\`
 
 ### 5.4 安装 IPAdapter Plus（风格/人脸迁移）
 
