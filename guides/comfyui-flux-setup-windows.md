@@ -107,7 +107,7 @@ modelscope download --model black-forest-labs/FLUX.1-dev  text_encoder_2/model-0
 modelscope download --model Comfy-Org/flux1-dev flux1-dev-fp8.safetensors --local_dir D:\\AI\\ComfyUI_models\\checkpoints
 
 # 下载PuLID
-modelscope download --model shiertier/ComfyUI-pulid pulid_flux_v0.9.1.safetensors --local_dir D:\\AI\\ComfyUI_models\\loras
+modelscope download --model shiertier/ComfyUI-pulid pulid_flux_v0.9.1.safetensors --local_dir D:\\AI\\ComfyUI_models\\pulid
 
 # facexlib 相关的库
 modelscope download --model libfishopen/facexlib parsing_bisenet.pth --local_dir  "C:\Users\home\Documents\ComfyUI\models\facexlib"
