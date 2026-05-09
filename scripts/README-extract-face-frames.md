@@ -40,6 +40,17 @@
 # 1. 创建虚拟环境（Python 3.10 对 onnxruntime-gpu 兼容性最好）
 conda create -n faceextract python=3.10 -y
 conda activate faceextract
+> Get-Command python
+
+```
+
+```powershell
+问题：为什么 conda activate faceextract 在 powershell上行不通，在CMD上就可以？
+这是 Conda 的经典 Windows 问题。Conda 默认只初始化了 CMD，没初始化 PowerShell。
+解决方法：conda init powershell
+然后关闭并重新打开 PowerShell，之后 conda activate 就能用了
+
+```
 
 # 2. 安装 CUDA 工具包（通过 conda，免去手动装 CUDA）
 conda install -c conda-forge cudatoolkit=11.8 cudnn=8.9 -y
@@ -50,7 +61,10 @@ pip install onnxruntime-gpu
 
 # 4. 验证 GPU 可用
 python -c "import onnxruntime as ort; print(ort.get_available_providers())"
-# 应输出: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+> 应输出: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+
+python -c "import cv2; print(cv2.__version__)"
+
 ```
 
 > ⚠️ **不要同时装 `onnxruntime` 和 `onnxruntime-gpu`**，会冲突！
