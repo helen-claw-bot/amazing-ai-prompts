@@ -409,3 +409,141 @@ def pulid_outer_sample_wrappers_with_override(wrapper_executor, noise, latent_im
 
 保存后重启 ComfyUI 即可。
 
+---
+
+## 十一、RedZ 1.5 / ERNIE RedMIX Text2Image 测试
+
+> 测试日期：2026-05-09 | RTX 3060 12GB 环境
+
+### 红潮（RedCraft）系列模型谱系
+
+**红潮（RedCraft）** 是由社区作者 AiMetatron（光元）开发的图像生成模型系列，在高质量基底模型上进行 SFT（有监督微调），解锁更多风格和生成自由度。
+
+Civitai 页面：https://civitai.com/models/958009/redcraft-or-or-ernie-redmix
+
+#### 基底模型演进
+
+| 代系 | 基底模型 | 架构 | 参数量 | 开发方 |
+|------|---------|------|--------|--------|
+| **RedZ v1.0~v1.5**（旧版） | **Z-Image / Z-Image-Turbo** | 单流 DiT（Diffusion Transformer） | 6B | 通义万相（阿里 Tongyi-MAI） |
+| **ERNIE RedMIX**（最新） | **ERNIE-Image** | 单流 DiT | 8B | 百度 ERNIE-Image 团队 |
+
+**Z-Image 系列**（阿里通义万相）：
+- **Z-Image**（ZI）：基础模型，50步，支持 CFG，高多样性
+- **Z-Image-Turbo**（ZIT）：蒸馏加速版，仅需 8 步，无 CFG，画质极高但多样性较低
+- **Z-Image-Base**（ZIB）：社区底座模型，适合微调
+- **Z-Image-Omni-Base**：同时支持生成和编辑
+- **Z-Image-Edit**：专注图像编辑
+
+HuggingFace：https://huggingface.co/Tongyi-MAI/Z-Image-Turbo
+
+**ERNIE-Image**（百度）：
+- 8B DiT 参数，Apache 2.0 开源
+- 使用 **Qwen3** 作为文本编码器（不是 T5XXL）
+- 原生支持中英文双语
+- 文本渲染能力在开源模型中领先
+
+#### RedCraft 在基底上的微调版本
+
+| 缩写 | 全称 | 含义 |
+|------|------|------|
+| **RedZ** | Red Z-Image | 基于 Z-Image 的红潮微调 |
+| **RedZiT** | Red Z-Image-Turbo | 基于 ZIT（Turbo 加速版）的微调 |
+| **RedZDX** | Red Z-Image Distilled X | 蒸馏版，更快更小 |
+| **ERNIE RedMIX** | ERNIE Red Mixed | 基于 ERNIE-Image 的混合精度微调（最新） |
+
+---
+
+### 模型文件命名解读
+
+以 `RedZDX-ZIB-Distilled-nocfg-10steps-fp8-e4m3fn-Diffusion-models.safetensors` 为例：
+
+| 字段 | 含义 |
+|------|------|
+| **RedZDX** | RedCraft Z-Image Distilled X（蒸馏版微调） |
+| **ZIB** | Z-Image Base（基于 Z-Image 基底） |
+| **Distilled** | 蒸馏加速（更少步数即可出图） |
+| **nocfg** | 不需要 CFG（Classifier-Free Guidance），设 CFG=1 即可 |
+| **10steps** | 推荐 10 步即可出图 |
+| **fp8** | FP8 量化精度（约为 BF16 的一半体积） |
+| **e4m3fn** | FP8 具体格式（4 位指数 + 3 位尾数） |
+| **Diffusion-models** | 仅含 DiT/UNet 权重，**不含 CLIP 和 VAE**，需分离加载 |
+| **AIO** | All-In-One，包含 DiT + CLIP + VAE 的完整包 |
+| **Checkpoints** | 完整检查点格式（可用 CheckpointLoaderSimple 加载） |
+| **BF16** | BFloat16 全精度（最高质量，最大体积） |
+| **FP8mixed** | 混合精度（部分层 FP8，部分层 FP16） |
+
+---
+
+### 不同版本的设备要求
+
+| 版本类型 | 文件大小 | 最低显存 | 推荐显存 | 适用场景 |
+|---------|---------|---------|---------|---------|
+| **BF16 AIO**（全精度完整包） | ~17-20 GB | 24 GB | 32+ GB | 4090 / A100 等高端卡 |
+| **FP8mixed AIO**（混合精度完整包） | ~17 GB | 16 GB | 24 GB | 3090 / 4080 |
+| **FP8 Diffusion-only**（量化仅模型） | ~5.7 GB | **8 GB** | **12 GB** | **RTX 3060 12GB ✅** |
+| **NVFP4**（4 位量化） | ~3-4 GB | 6 GB | 8 GB | Blackwell 架构 GPU（50系） |
+
+> ⚠️ Diffusion-only 版本还需额外加载 Text Encoder（~2-5 GB）和 VAE（~300 MB）
+
+---
+
+### 坑7：ERNIE RedMIX 模型加载方式（重要！）
+
+ERNIE RedMIX 基于 ERNIE-Image 架构，**不是标准 Flux**，加载方式完全不同。
+
+#### ❌ 错误方式
+
+| 尝试 | 结果 |
+|------|------|
+| `CheckpointLoaderSimple` 加载 AIO | CLIP 输出为 **None** |
+| `DualCLIPLoader` + clip_l + t5xxl | `RuntimeError: normalized_shape=[2560], got [2, 256, 4096]` |
+| `DualCLIPLoader` + clip_l + qwen3 | `RuntimeError: normalized_shape=[2560], got [1, 512, 7680]` |
+
+**原因：** ERNIE-Image 使用**单文本编码器** Qwen3（不是 Flux 的双编码器 clip_l + t5xxl），维度完全不同。
+
+#### ✅ 正确方式：三件套分离加载
+
+1. **UNETLoader**（Load Diffusion Model）
+   - 模型：`redcraftERNIERedmix_redzit15AIO.safetensors`（或 fp8 Diffusion-only 版）
+   - weight_dtype：`default`
+
+2. **CLIPLoader**（单个 Load CLIP，**不是 DualCLIPLoader！**）
+   - clip_name：`qwen3_4b_fp8_scaled.safetensors`
+   - type：根据实际版本选择
+
+3. **VAELoader**
+   - vae_name：`ae.safetensors`（标准 Flux.1 16C VAE，~319 MB，与 FLUX.1 共用）
+
+---
+
+### 所需文件清单
+
+| 文件 | 用途 | 放置路径 | 大小 | 来源 |
+|-----|------|---------|------|------|
+| `redcraftERNIERedmix_redzit15AIO.safetensors`（或 fp8 Diffusion） | 主模型 | `models/checkpoints/` 或 `models/diffusion_models/` | 5.7~17 GB | Civitai |
+| `qwen3_4b_fp8_scaled.safetensors` | 文本编码器 | `models/clip/` | ~2-5 GB | Civitai |
+| `ae.safetensors` | VAE 解码器 | `models/vae/` | ~319 MB | 已有（同 FLUX.1） |
+
+---
+
+### 推荐采样参数
+
+| 参数 | 推荐值 |
+|------|--------|
+| 采样器 | **EULER** 或 **DEIS** |
+| 调度器 | **Simple** |
+| CFG | **1** |
+| 步数 | **10** |
+
+---
+
+### 测试结果
+
+✅ **RedZ 1.5 ERNIE RedMIX 在 RTX 3060 12GB 上成功运行**
+
+- 画面质量和细节明显优于 FLUX.1 Dev
+- 支持中文提示词直接输入（Qwen3 编码器原生支持中英双语）
+- 10 步即可出图，速度理想
+- FP8 Diffusion-only 版显存占用友好
+
