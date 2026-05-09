@@ -127,6 +127,20 @@ ComfyUI 的 Python 虚拟环境位于 `C:\Users\home\Documents\ComfyUI\.venv`，
 **PowerShell：**
 ```powershell
 C:\Users\home\Documents\ComfyUI\.venv\Scripts\Activate.ps1
+
+C:\Users\home\Documents\ComfyUI\.venv\Scripts\activate
+
+Get-Command python
+>> C:\Users\home\Documents\ComfyUI\.venv/Scripts\python.exe 
+
+(ComfyUI) PS C:\Users\home\Documents\ComfyUI\.venv\Scripts> python -m pip install "numpy==1.26.4" 
+(ComfyUI) PS C:\Users\home\Documents\ComfyUI\.venv\Scripts> python -m pip install "opencv-python==4.7.0.72" 
+
+(ComfyUI) PS C:\Users\home\Documents\ComfyUI\.venv\Scripts> python -m pip show opencv-python
+
+更新镜像站
+python -m pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+>> Writing to C:\Users\home\AppData\Roaming\pip\pip.ini
 ```
 
 **CMD：**
@@ -408,4 +422,61 @@ def pulid_outer_sample_wrappers_with_override(wrapper_executor, noise, latent_im
 ```
 
 保存后重启 ComfyUI 即可。
+
+
+
+## huggingface setup
+
+> 使用 python api 下载，速度可达 15.7MB/s
+
+```python
+pip install --upgrade huggingface_hub
+
+from huggingface_hub import hf_hub_download
+
+hf_hub_download(
+    repo_id="black-forest-labs/FLUX.2-klein-4b-fp8",
+    filename="flux-2-klein-4b-fp8.safetensors",
+    local_dir="D:/AI/ComfyUI_models/checkpoints/"
+)
+
+
+hf_hub_download(
+    repo_id="skbhadra/ClearRealityV1",
+    filename="4x-ClearRealityV1.pth",
+    local_dir="D:/AI/ComfyUI_models/upscale_models/"
+)
+
+
+
+
+
+```
+
+
+# 超分辨率模型
+
+```python
+from huggingface_hub import hf_hub_download
+
+hf_hub_download(
+    repo_id="skbhadra/ClearRealityV1",
+    filename="4x-ClearRealityV1.pth",
+    local_dir="D:/AI/ComfyUI_models/upscale_models/"
+)
+
+```
+
+```bash
+New-Item -ItemType Junction -Path "C:\Users\home\Documents\ComfyUI\models\upscale_models" -Target "D:\AI\ComfyUI_models\upscale_models"
+
+New-Item -ItemType SymbolicLink -Path "C:\Users\home\Documents\ComfyUI\models\upscale_models" -Target "D:\AI\ComfyUI_models\upscale_models"
+
+```
+
+hf_hub_download(
+    repo_id="jiangchengchengNLP/qwen3-4b-fp8-scaled",
+    filename="qwen3_4b_fp8_scaled.safetensors",
+    local_dir="D:/AI/ComfyUI_models/clip/"
+)
 
