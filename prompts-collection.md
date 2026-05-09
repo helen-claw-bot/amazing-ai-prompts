@@ -167,9 +167,11 @@
 
 **效果图对比：**
 
-| Grok | Gemini | GPT Image（暗色） | GPT Image（亮色） |
-|------|--------|------------------|------------------|
-| ![grok](assets/P-G003-iceblue-grok.jpg) | ![gemini](assets/P-G003-iceblue-gemini.png) | ![gptimg-dark](assets/P-G003-iceblue-gptimg-dark.png) | ![gptimg-light](assets/P-G003-iceblue-gptimg-light.png) |
+| Grok | Gemini | GPT Image（暗色） | GPT Image（亮色） | REDZ1.5 |
+|------|--------|------------------|------------------|------------------|
+| ![grok](assets/P-G003-iceblue-grok.jpg) | ![gemini](assets/P-G003-iceblue-gemini.png) | ![gptimg-dark](assets/P-G003-iceblue-gptimg-dark.png) | ![gptimg-light](assets/P-G003-iceblue-gptimg-light.png) |![redz](assets/P-G003-iceblue-redz15.png) |
+
+
 
 **特写变体（P-G003a）：**
 

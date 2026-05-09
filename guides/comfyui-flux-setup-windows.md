@@ -474,11 +474,6 @@ New-Item -ItemType SymbolicLink -Path "C:\Users\home\Documents\ComfyUI\models\up
 
 ```
 
-hf_hub_download(
-    repo_id="jiangchengchengNLP/qwen3-4b-fp8-scaled",
-    filename="qwen3_4b_fp8_scaled.safetensors",
-    local_dir="D:/AI/ComfyUI_models/clip/"
-)
 ---
 
 ## 十一、RedZ 1.5 / ERNIE RedMIX Text2Image 测试
@@ -581,6 +576,13 @@ ERNIE RedMIX 基于 ERNIE-Image 架构，**不是标准 Flux**，加载方式完
 2. **CLIPLoader**（单个 Load CLIP，**不是 DualCLIPLoader！**）
    - clip_name：`qwen3_4b_fp8_scaled.safetensors`
    - type：根据实际版本选择
+   ```python
+   hf_hub_download(
+    repo_id="jiangchengchengNLP/qwen3-4b-fp8-scaled",
+    filename="qwen3_4b_fp8_scaled.safetensors",
+    local_dir="D:/AI/ComfyUI_models/clip/"
+    )
+   ```
 
 3. **VAELoader**
    - vae_name：`ae.safetensors`（标准 Flux.1 16C VAE，~319 MB，与 FLUX.1 共用）
@@ -614,6 +616,10 @@ ERNIE RedMIX 基于 ERNIE-Image 架构，**不是标准 Flux**，加载方式完
 
 - 画面质量和细节明显优于 FLUX.1 Dev
 - 支持中文提示词直接输入（Qwen3 编码器原生支持中英双语）
-- 10 步即可出图，速度理想
+- 出图速度理想 50-80s
 - FP8 Diffusion-only 版显存占用友好
+- ⭐当前出图质量最佳 (2026-05-09)
+- ⭐当前NSFW适配最佳 (2026-05-09)
 
+
+❌️ Klein 4B 生成的人物失真过于严重，眼睛/五官细节丢失过多。因此不考虑使用该模型。
