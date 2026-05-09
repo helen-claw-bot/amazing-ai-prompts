@@ -4,7 +4,10 @@ cut_video.py
 用 ffmpeg 快速切割视频片段
 
 依赖: ffmpeg（系统级，不是Python包）
-安装: brew install ffmpeg
+安装:
+    Windows: winget install ffmpeg  或  choco install ffmpeg
+    Mac:     brew install ffmpeg
+    Linux:   sudo apt install ffmpeg
 
 用法:
     # 交互模式（推荐新手）
@@ -27,8 +30,10 @@ import sys
 def check_ffmpeg():
     if shutil.which("ffmpeg") is None:
         print("❌ 未找到 ffmpeg，请先安装：")
-        print("   Mac:   brew install ffmpeg")
-        print("   Linux: sudo apt install ffmpeg")
+        print("   Windows: winget install ffmpeg  或  choco install ffmpeg")
+        print("            或从 https://www.gyan.dev/ffmpeg/builds/ 下载后加入 PATH")
+        print("   Mac:     brew install ffmpeg")
+        print("   Linux:   sudo apt install ffmpeg")
         sys.exit(1)
 
 
@@ -48,10 +53,10 @@ def cut_clip(video_in, start, end, output, overwrite=True):
         "-i", video_in,
         "-to", str(end),
         "-c", "copy",        # 直接复制流，不重新编码，快！
-        output,
     ]
     if overwrite:
         cmd.append("-y")
+    cmd.append(output)
 
     print(f"  ✂️  {start} → {end}  →  {output}")
     result = subprocess.run(cmd, capture_output=True, text=True)
