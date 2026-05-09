@@ -50,8 +50,8 @@ def cut_clip(video_in, start, end, output, overwrite=True):
     cmd = [
         "ffmpeg",
         "-ss", str(start),
-        "-i", video_in,
         "-to", str(end),
+        "-i", video_in,
         "-c", "copy",        # 直接复制流，不重新编码，快！
     ]
     if overwrite:
@@ -68,53 +68,14 @@ def cut_clip(video_in, start, end, output, overwrite=True):
     return True
 
 
-def interactive_mode():
-    """交互模式：逐步引导输入"""
-    print("=" * 50)
-    print("📹 视频切割工具（交互模式）")
-    print("=" * 50)
-
-    video = input("\n输入视频文件路径: ").strip().strip("'\"")
-    if not os.path.exists(video):
-        print(f"❌ 文件不存在: {video}")
-        sys.exit(1)
-
-    output_dir = input("输出目录 [默认: ./clips]: ").strip() or "./clips"
-
-    print("\n输入片段（时间格式：HH:MM:SS 或 MM:SS）")
-    print("留空开始时间 = 跳出循环\n")
-
-    clips = []
-    i = 1
-    while True:
-        start = input(f"片段 {i} 开始时间（回车结束）: ").strip()
-        if not start:
-            break
-        end = input(f"片段 {i} 结束时间: ").strip()
-        name = input(f"输出文件名 [默认: clip_{i:02d}.mp4]: ").strip() or f"clip_{i:02d}.mp4"
-        clips.append((start, end, name))
-        i += 1
-
-    if not clips:
-        print("没有输入任何片段，退出")
-        sys.exit(0)
-
-    print(f"\n开始切割 {len(clips)} 个片段...")
-    success = 0
-    for start, end, name in clips:
-        out = os.path.join(output_dir, name)
-        if cut_clip(video, start, end, out):
-            success += 1
-
-    print(f"\n✅ 完成：{success}/{len(clips)} 个片段成功 → {output_dir}/")
-
-
 def batch_mode(video, output_dir, clips):
     """批量模式：处理预定义的 CLIPS 列表"""
+    video_stem = os.path.splitext(os.path.basename(video))[0]
     print(f"📹 批量切割：{len(clips)} 个片段")
     success = 0
     for start, end, name in clips:
-        out = os.path.join(output_dir, name)
+        stem, ext = os.path.splitext(name)
+        out = os.path.join(output_dir, f"{video_stem}_{stem}{ext}")
         if cut_clip(video, start, end, out):
             success += 1
     print(f"\n✅ 完成：{success}/{len(clips)} 个片段 → {output_dir}/")
@@ -124,12 +85,11 @@ def batch_mode(video, output_dir, clips):
 # 批量模式配置区：直接编辑这里，然后跑
 #   python cut_video.py --batch --video your_video.mp4
 # ──────────────────────────────────────────────
-BATCH_OUTPUT_DIR = "./clips"
 BATCH_CLIPS = [
-    # (开始时间,    结束时间,    输出文件名)
-    ("00:05:00", "00:08:30", "clip_01.mp4"),
-    ("00:23:10", "00:27:00", "clip_02.mp4"),
-    ("00:35:45", "00:38:20", "clip_03.mp4"),
+    # (开始时间,    结束时间,    后缀名)  → 输出为 原始视频名_后缀名
+    ("00:06:00", "00:10:12", "clip_01.mp4"),
+    # ("00:23:10", "00:27:00", "clip_02.mp4"),
+    # ("00:35:45", "00:38:20", "clip_03.mp4"),
     # 继续添加...
 ]
 # ──────────────────────────────────────────────
@@ -152,11 +112,14 @@ def main():
 
     # 批量模式
     elif args.batch and args.video:
-        batch_mode(args.video, BATCH_OUTPUT_DIR, BATCH_CLIPS)
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(args.video)), "clips")
+        batch_mode(args.video, output_dir, BATCH_CLIPS)
 
-    # 交互模式
+    # 打印帮助信息
     else:
-        interactive_mode()
+        print("❌ 参数不足，请使用 --help 查看用法")
+        parser.print_help()
+        
 
 
 if __name__ == "__main__":

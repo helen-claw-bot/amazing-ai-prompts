@@ -96,6 +96,30 @@ pip install insightface opencv-python onnxruntime numpy
 
 脚本会自动检测：有 GPU 用 GPU，没有自动回退 CPU，无需手动切换。
 
+
+## ffmpeg
+
+### 命令行安装（推荐）
+>  winget install ffmpeg 
+
+### 网页安装
+具体步骤：
+
+1. 点 "Windows builds from gyan.dev"
+2. 找 release-essentials 的 zip（不是 full，太大没必要）
+3. 解压到比如 D:\AI\ffmpeg\`
+4. 把 D:\AI\ffmpeg\bin 加到系统 PATH：
+    ```bash
+    # 临时生效（当前窗口）
+    $env:PATH += ";D:\AI\ffmpeg\bin"
+
+    # 永久生效
+    [Environment]\::SetEnvironmentVariable("PATH", $env:PATH + ";D:\AI\ffmpeg\bin", "User")
+    
+    ```
+
+5. 重开终端，`ffmpeg -version` 验证
+
 ---
 
 ## 使用方法
@@ -118,11 +142,12 @@ python extract_face_frames.py \
 ```powershell
 conda activate faceextract
 
-python D:\AI\amazing-ai-prompts\scripts\extract_face_frames.py `
-    --video "D:\Videos\drama_ep01.mp4" `
-    --refs "D:\Photos\actress_front.jpg" "D:\Photos\actress_side.jpg" `
-    --output "D:\AI\face_output" `
-    --top 200
+# 测试版， 4min时长，耗时0.5min 
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\clips\01_clip_01.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 50 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
+# 正式版 
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\01.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
 ```
 
 ### 完整参数
