@@ -44,8 +44,8 @@ conda activate faceextract
 # 2. 安装 CUDA 工具包（通过 conda，免去手动装 CUDA）
 conda install -c conda-forge cudatoolkit=11.8 cudnn=8.9 -y
 
-# 3. 安装 Python 依赖（GPU 版）
-pip install insightface opencv-python numpy
+# 3. 安装 Python 依赖（GPU 版，注意版本锁定）
+pip install numpy==1.26.4 opencv-python-headless==4.11.0.86 insightface
 pip install onnxruntime-gpu
 
 # 4. 验证 GPU 可用
@@ -198,9 +198,9 @@ output_frames/
 |---|------|------|
 | Python | 3.10.x | 3.11 也可，3.12 对 insightface 兼容性待验证 |
 | insightface | 0.7.3+ | 人脸检测+识别 |
-| opencv-python | 4.8+ | 视频读取、图像处理 |
+| opencv-python | 4.11.x | 视频读取、图像处理（**不要用 4.12+**，它要求 numpy≥2 与 insightface 冲突） |
 | onnxruntime-gpu | 1.17+ | GPU 推理（需 CUDA 11.8/12.x） |
-| numpy | 1.24+ | 数值计算 |
+| numpy | 1.26.4 | **必须 <2.0**（insightface 的 Cython 扩展不兼容 numpy 2.x） |
 | cudatoolkit | 11.8 | 通过 conda 安装 |
 | cudnn | 8.9 | 通过 conda 安装 |
 
