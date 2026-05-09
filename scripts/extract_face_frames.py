@@ -4,7 +4,10 @@ extract_face_frames.py
 从视频中提取指定人物的优质人脸帧
 
 依赖安装:
+    # CPU 模式
     pip install insightface opencv-python onnxruntime numpy
+    # GPU 模式（NVIDIA CUDA，推荐）
+    pip install insightface opencv-python onnxruntime-gpu numpy
 
 用法:
     python extract_face_frames.py \
@@ -44,7 +47,16 @@ except ImportError:
 
 def load_face_app():
     """初始化 InsightFace，使用 buffalo_l 模型（含检测+识别）"""
-    app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+    # 自动检测 GPU：优先 CUDA，回退 CPU
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    if "CUDAExecutionProvider" in available:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        print("🚀 使用 GPU (CUDA) 加速")
+    else:
+        providers = ["CPUExecutionProvider"]
+        print("💻 使用 CPU 模式")
+    app = FaceAnalysis(name="buffalo_l", providers=providers)
     app.prepare(ctx_id=0, det_size=(640, 640))
     return app
 

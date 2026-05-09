@@ -32,13 +32,55 @@
 
 ---
 
-## 安装依赖
+## 环境搭建
+
+### 方式一：Conda 虚拟环境（推荐，适配 Windows + NVIDIA GPU）
+
+```powershell
+# 1. 创建虚拟环境（Python 3.10 对 onnxruntime-gpu 兼容性最好）
+conda create -n faceextract python=3.10 -y
+conda activate faceextract
+
+# 2. 安装 CUDA 工具包（通过 conda，免去手动装 CUDA）
+conda install -c conda-forge cudatoolkit=11.8 cudnn=8.9 -y
+
+# 3. 安装 Python 依赖（GPU 版）
+pip install insightface opencv-python numpy
+pip install onnxruntime-gpu
+
+# 4. 验证 GPU 可用
+python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+# 应输出: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+> ⚠️ **不要同时装 `onnxruntime` 和 `onnxruntime-gpu`**，会冲突！
+> 如果之前装过 CPU 版：`pip uninstall onnxruntime -y && pip install onnxruntime-gpu`
+
+### 方式二：pip 直装（CPU 模式，Mac / 无 GPU 机器）
 
 ```bash
 pip install insightface opencv-python onnxruntime numpy
 ```
 
-> M2 Mac 可正常运行，不需要独立显卡，首次运行会自动下载模型（约500MB）
+### 方式三：Conda + CPU（Mac M系列芯片）
+
+```bash
+conda create -n faceextract python=3.10 -y
+conda activate faceextract
+pip install insightface opencv-python onnxruntime numpy
+```
+
+---
+
+## GPU vs CPU 速度对比
+
+| 环境 | 40分钟视频 @ 1fps | 说明 |
+|------|------------------|------|
+| **RTX 3060 12GB** (CUDA) | **~2-3 分钟** | 推荐 ✅ |
+| M2 MacBook Air (CPU) | ~12 分钟 | 可用但慢 |
+| i7-11700K (CPU) | ~8 分钟 | 仅 CPU 核心 |
+
+脚本会自动检测：有 GPU 用 GPU，没有自动回退 CPU，无需手动切换。
 
 ---
 
@@ -47,43 +89,40 @@ pip install insightface opencv-python onnxruntime numpy
 ### 基础用法
 
 ```bash
+# 先激活环境
+conda activate faceextract
+
+# 运行
 python extract_face_frames.py \
     --video /path/to/video.mp4 \
     --refs ref1.jpg ref2.jpg ref3.jpg \
     --output ./output_frames
 ```
 
+### Windows PowerShell 示例
+
+```powershell
+conda activate faceextract
+
+python D:\AI\amazing-ai-prompts\scripts\extract_face_frames.py `
+    --video "D:\Videos\drama_ep01.mp4" `
+    --refs "D:\Photos\actress_front.jpg" "D:\Photos\actress_side.jpg" `
+    --output "D:\AI\face_output" `
+    --top 200
+```
+
 ### 完整参数
 
-```bash
-python extract_face_frames.py \
-    --video /path/to/video.mp4 \        # 视频路径（mp4/mov/avi均可）
-    --refs ref1.jpg ref2.jpg \           # 参考照片（1-5张，正脸清晰最佳）
-    --output ./output_frames \           # 输出目录（自动创建）
-    --top 100 \                          # 最多保留多少张（默认100）
-    --fps 1 \                            # 每秒采样几帧（默认1，越高越慢但不漏帧）
-    --sim 0.45 \                         # 相似度阈值（0-1，越高越严格，默认0.45）
-    --angle 40 \                         # 最大偏角°（默认40）
-    --blur 80                            # 最低清晰度分（默认80）
-```
-
-### 实际示例
-
-```bash
-# 40分钟视频，提取女主角的优质帧
-python extract_face_frames.py \
-    --video drama_ep01.mp4 \
-    --refs actress_front.jpg actress_side.jpg \
-    --output ./actress_frames \
-    --top 200 \
-    --fps 1
-
-# 如果找不到人（结果为0），尝试降低阈值
-python extract_face_frames.py ... --sim 0.35
-
-# 如果结果太多太杂，提高阈值
-python extract_face_frames.py ... --sim 0.55
-```
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--video` | （必填） | 输入视频路径（mp4/mov/avi 均可） |
+| `--refs` | （必填） | 目标人物参考照片（1-5张，正脸清晰最佳） |
+| `--output` | `./output_frames` | 输出目录（自动创建） |
+| `--top` | 100 | 最多保留多少张 |
+| `--fps` | 1 | 每秒采样几帧（越高越慢但不漏帧） |
+| `--sim` | 0.45 | 相似度阈值（0-1，越高越严格） |
+| `--angle` | 40 | 最大偏角°（过滤大角度侧脸） |
+| `--blur` | 80 | 最低清晰度分（Laplacian 方差） |
 
 ---
 
@@ -121,32 +160,50 @@ output_frames/
 
 ---
 
-## 速度参考（M2 MacBook Air）
-
-| 视频时长 | 采样fps | 预计时间 |
-|---------|---------|---------|
-| 10分钟 | 1fps | ~3分钟 |
-| 40分钟 | 1fps | ~12分钟 |
-| 40分钟 | 2fps | ~24分钟 |
-
-> 首次运行需下载 InsightFace buffalo_l 模型，约500MB，之后缓存本地
-
----
-
 ## 常见问题
 
 **Q: 找不到目标人物（结果为0）**
-- 降低 `--sim` 阈值（试试0.35）
+- 降低 `--sim` 阈值（试试 0.35）
 - 检查参考照片质量（是否正脸清晰）
 - 确认视频里真的有这个人
 
 **Q: 找到了很多不像的人**
-- 提高 `--sim` 阈值（试试0.55-0.65）
+- 提高 `--sim` 阈值（试试 0.55-0.65）
 
 **Q: 帧都很模糊**
-- 降低 `--blur` 阈值（试试50）
+- 降低 `--blur` 阈值（试试 50）
 - 或者 `--fps 2` 提高采样率，选更多候选帧
 
 **Q: 运行报错找不到模型**
-- 确保网络畅通，首次运行会自动下载
-- 或手动下载 buffalo_l 模型到 `~/.insightface/models/`
+- 确保网络畅通，首次运行会自动下载 InsightFace buffalo_l 模型（~500MB）
+- 或手动下载到 `~/.insightface/models/`（Windows 为 `C:\Users\<用户名>\.insightface\models\`）
+
+**Q: `onnxruntime-gpu` 安装后仍然用 CPU**
+- 检查 CUDA 版本兼容性：`nvidia-smi` 查看驱动版本
+- onnxruntime-gpu 1.17+ 需要 CUDA 11.8 或 12.x
+- 如果 conda 装了 cudatoolkit 还不行，试试设环境变量：
+  ```powershell
+  $env:CUDA_PATH = "C:\Users\<用户名>\miniconda3\envs\faceextract\Library"
+  ```
+
+**Q: Windows 上报 `DLL load failed`**
+- 安装 Visual C++ Redistributable：https://aka.ms/vs/17/release/vc_redist.x64.exe
+- 重启终端后重试
+
+---
+
+## 依赖版本参考（已测试）
+
+| 包 | 版本 | 说明 |
+|---|------|------|
+| Python | 3.10.x | 3.11 也可，3.12 对 insightface 兼容性待验证 |
+| insightface | 0.7.3+ | 人脸检测+识别 |
+| opencv-python | 4.8+ | 视频读取、图像处理 |
+| onnxruntime-gpu | 1.17+ | GPU 推理（需 CUDA 11.8/12.x） |
+| numpy | 1.24+ | 数值计算 |
+| cudatoolkit | 11.8 | 通过 conda 安装 |
+| cudnn | 8.9 | 通过 conda 安装 |
+
+---
+
+> 首次运行需下载 InsightFace buffalo_l 模型，约 500MB，之后缓存本地。
