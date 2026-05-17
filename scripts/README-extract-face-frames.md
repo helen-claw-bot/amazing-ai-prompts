@@ -146,7 +146,10 @@ conda activate faceextract
 python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\clips\01_clip_01.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 50 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
 
 # 正式版 
-python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\01.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\02.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\LZJ" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
 
 ```
 

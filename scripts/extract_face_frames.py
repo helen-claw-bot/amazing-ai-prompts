@@ -9,19 +9,25 @@ extract_face_frames.py
     # GPU 模式（NVIDIA CUDA，推荐）
     pip install insightface opencv-python onnxruntime-gpu numpy
 
-用法:
+用法（单视频）:
     python extract_face_frames.py \
         --video /path/to/video.mp4 \
         --refs /path/to/ref1.jpg /path/to/ref2.jpg \
         --output ./output_frames \
-        --top 100 \
-        --fps 1 \
-        --solo
+        --top 100 --fps 1 --solo
+
+用法（批量目录）:
+    python extract_face_frames.py \
+        --dir /path/to/videos/ \
+        --refs /path/to/ref1.jpg /path/to/ref2.jpg \
+        --output ./output_frames \
+        --top 100 --fps 1 --solo
 
 参数说明:
-    --video     输入视频路径
+    --video     输入视频路径（与 --dir 二选一）
+    --dir       视频目录，自动遍历所有 .mp4 文件（与 --video 二选一）
     --refs      目标人物参考照片（1-5张，正脸清晰最佳）
-    --output    输出目录（默认：视频所在目录下的 {视频名}_faces）
+    --output    输出目录（默认：视频所在目录下的 {视频名}_faces；批量时为各视频子目录的父目录）
     --top       保留评分最高的N张帧（默认100）
     --fps       每秒采样帧数（默认1，40min视频约2400帧）
     --sim       人脸相似度阈值（默认0.45，越高越严格）
@@ -33,10 +39,12 @@ extract_face_frames.py
 
 import argparse
 import csv
+import json
 import os
 import shutil
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # 让 onnxruntime-gpu 能找到 PyTorch 自带的 CUDA 12 DLL
@@ -114,8 +122,8 @@ def estimate_yaw(face):
     return min(yaw, 90.0)
 
 
-def process_video(video_path, ref_embeddings, output_dir, top_n, sample_fps, sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite=True, model_dir=None):
-    app = load_face_app(model_dir)
+
+def process_video(app, video_path, ref_embeddings, output_dir, top_n, sample_fps, sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite=True):
     output_dir = Path(output_dir)
     if output_dir.exists() and any(output_dir.iterdir()):
         if not overwrite:
@@ -125,7 +133,7 @@ def process_video(video_path, ref_embeddings, output_dir, top_n, sample_fps, sim
         print(f"🗑  已清空旧目录: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cap = cv2.VideoCapture(str(video_path))
+    cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
     if not cap.isOpened():
         print(f"❌ 无法打开视频: {video_path}")
         sys.exit(1)
@@ -279,15 +287,133 @@ def process_video(video_path, ref_embeddings, output_dir, top_n, sample_fps, sim
         print(f"   {r['timecode']} | 相似度:{r['similarity']} | 清晰度:{r['blur_score']:.0f} | 偏角:{r['yaw_deg']}°{multi_info} | 综合:{r['composite']}")
 
 
+PROGRESS_FILE = "batch_progress.json"
+
+
+def load_progress(progress_path):
+    """读取批量处理进度记录，key 为视频绝对路径"""
+    if progress_path.exists():
+        with open(progress_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_progress(progress_path, progress):
+    with open(progress_path, "w", encoding="utf-8") as f:
+        json.dump(progress, f, ensure_ascii=False, indent=2)
+
+
+def process_directory(app, video_dir, ref_embeddings, base_output, top_n, sample_fps,
+                      sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite):
+    video_dir = Path(video_dir)
+    mp4_files = sorted(video_dir.glob("*.mp4")) + sorted(video_dir.glob("*.MP4"))
+    # 去重（Windows 不区分大小写，可能重复）
+    seen = set()
+    mp4_files = [p for p in mp4_files if not (p.name.lower() in seen or seen.add(p.name.lower()))]
+
+    if not mp4_files:
+        print(f"⚠️  目录中未找到 .mp4 文件: {video_dir}")
+        return
+
+    if base_output is None:
+        base_output = video_dir
+    else:
+        base_output = Path(base_output)
+        base_output.mkdir(parents=True, exist_ok=True)
+
+    progress_path = base_output / PROGRESS_FILE
+    progress = load_progress(progress_path)
+
+    total = len(mp4_files)
+    print(f"📂 目录: {video_dir}")
+    print(f"   共找到 {total} 个 MP4 文件")
+    done_count = sum(1 for v in progress.values() if v.get("status") == "done")
+    print(f"   已完成: {done_count} / {total}（进度记录: {progress_path}）")
+    print("=" * 50)
+
+    for idx, video_path in enumerate(mp4_files, 1):
+        key = str(video_path.resolve())
+        prev = progress.get(key, {})
+
+        if prev.get("status") == "done":
+            print(f"[{idx}/{total}] ⏭  跳过（已完成）: {video_path.name}")
+            continue
+
+        output_dir = base_output / f"{video_path.stem}_faces"
+        print(f"\n[{idx}/{total}] 🎬 开始处理: {video_path.name}")
+
+        start_time = datetime.now()
+        progress[key] = {
+            "status": "running",
+            "video": str(video_path),
+            "output_dir": str(output_dir),
+            "start": start_time.isoformat(),
+        }
+        save_progress(progress_path, progress)
+
+        try:
+            process_video(
+                app=app,
+                video_path=video_path,
+                ref_embeddings=ref_embeddings,
+                output_dir=output_dir,
+                top_n=top_n,
+                sample_fps=sample_fps,
+                sim_thresh=sim_thresh,
+                angle_thresh=angle_thresh,
+                blur_thresh=blur_thresh,
+                min_face_px=min_face_px,
+                solo=solo,
+                overwrite=overwrite,
+            )
+            end_time = datetime.now()
+            # 统计实际保存帧数
+            saved = len(list(output_dir.glob("frame_*.jpg"))) if output_dir.exists() else 0
+            progress[key] = {
+                "status": "done",
+                "video": str(video_path),
+                "output_dir": str(output_dir),
+                "frames_saved": saved,
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+                "elapsed_min": round((end_time - start_time).total_seconds() / 60, 2),
+            }
+        except Exception as e:
+            end_time = datetime.now()
+            progress[key] = {
+                "status": "error",
+                "video": str(video_path),
+                "output_dir": str(output_dir),
+                "error": str(e),
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            }
+            print(f"❌ 处理失败: {video_path.name} — {e}")
+
+        save_progress(progress_path, progress)
+
+    print("\n" + "=" * 50)
+    done = [v for v in progress.values() if v.get("status") == "done"]
+    errors = [v for v in progress.values() if v.get("status") == "error"]
+    print(f"🏁 批量处理完成: 成功 {len(done)} / {total}，失败 {len(errors)}")
+    if errors:
+        print("   失败列表:")
+        for e in errors:
+            print(f"   ❌ {Path(e['video']).name}: {e.get('error', '')}")
+    print(f"📋 进度记录: {progress_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="从视频中提取指定人物的优质人脸帧")
-    parser.add_argument("--video", required=True, help="输入视频路径")
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument("--video", help="输入视频路径（单文件模式）")
+    src.add_argument("--dir", help="视频目录，自动遍历所有 .mp4 文件（批量模式）")
     parser.add_argument("--refs", required=True, nargs="+", help="目标人物参考照片路径（1-5张）")
-    parser.add_argument("--output", default=None, help="输出目录（默认：视频所在目录下的 {视频名}_faces）")
+    parser.add_argument("--output", default=None, help="输出目录（单文件默认：视频旁的 {名}_faces；批量默认：视频目录本身）")
     parser.add_argument("--top", type=int, default=100, help="保留最优帧数量（默认100）")
     parser.add_argument("--fps", type=float, default=1.0, help="每秒采样帧数（默认1）")
-    parser.add_argument("--sim", type=float, default=0.5, help="相似度阈值 0-1（默认0.45）")
-    parser.add_argument("--angle", type=float, default=60.0, help="最大允许偏角°（默认40）")
+    parser.add_argument("--sim", type=float, default=0.5, help="相似度阈值 0-1（默认0.5）")
+    parser.add_argument("--angle", type=float, default=60.0, help="最大允许偏角°（默认60）")
     parser.add_argument("--blur", type=float, default=80.0, help="最低清晰度分（默认80）")
     parser.add_argument("--min-face", type=int, default=100, help="人脸短边最小像素数（默认100px）")
     parser.add_argument("--solo", action="store_true", help="只保留画面中只有目标人物单独出现的帧")
@@ -295,15 +421,10 @@ def main():
     parser.add_argument("--model-dir", default=None, help="InsightFace 模型根目录（默认 ~/.insightface）")
     args = parser.parse_args()
 
-    if args.output is None:
-        video_path = Path(args.video)
-        args.output = str(video_path.parent / f"{video_path.stem}_faces")
-
-    print("🦐 人脸帧提取工具 v1.1")
+    print("🦐 人脸帧提取工具 v1.2")
     print("=" * 50)
 
-    model_dir = getattr(args, "model_dir", None)
-    app = load_face_app(model_dir)
+    app = load_face_app(args.model_dir)
     print(f"📷 加载参考照片 ({len(args.refs)} 张)...")
     ref_embeddings = []
     for ref_path in args.refs:
@@ -316,20 +437,42 @@ def main():
         print("❌ 没有成功加载任何参考照片，退出")
         sys.exit(1)
 
-    process_video(
-        video_path=args.video,
-        ref_embeddings=ref_embeddings,
-        output_dir=args.output,
-        top_n=args.top,
-        sample_fps=args.fps,
-        sim_thresh=args.sim,
-        angle_thresh=args.angle,
-        blur_thresh=args.blur,
-        min_face_px=args.min_face,
-        solo=args.solo,
-        overwrite=not args.no_overwrite,
-        model_dir=model_dir,
-    )
+    overwrite = not args.no_overwrite
+
+    if args.dir:
+        process_directory(
+            app=app,
+            video_dir=args.dir,
+            ref_embeddings=ref_embeddings,
+            base_output=args.output,
+            top_n=args.top,
+            sample_fps=args.fps,
+            sim_thresh=args.sim,
+            angle_thresh=args.angle,
+            blur_thresh=args.blur,
+            min_face_px=args.min_face,
+            solo=args.solo,
+            overwrite=overwrite,
+        )
+    else:
+        output = args.output
+        if output is None:
+            video_path = Path(args.video)
+            output = str(video_path.parent / f"{video_path.stem}_faces")
+        process_video(
+            app=app,
+            video_path=args.video,
+            ref_embeddings=ref_embeddings,
+            output_dir=output,
+            top_n=args.top,
+            sample_fps=args.fps,
+            sim_thresh=args.sim,
+            angle_thresh=args.angle,
+            blur_thresh=args.blur,
+            min_face_px=args.min_face,
+            solo=args.solo,
+            overwrite=overwrite,
+        )
 
 
 if __name__ == "__main__":
