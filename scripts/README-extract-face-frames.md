@@ -148,7 +148,29 @@ python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\
 # 正式版 
 python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\videos\02.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
 
-python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\LZJ" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+# 批处理+跳过片头片尾
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\LZJ" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 100 --skip-outro 150
+
+# for 捕风追影
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\BFZY_CISHA" --refs "E:\AI\data\CS1.JPG" "E:\AI\data\CS2.PNG" --top 100 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
+# for 山河之影
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\SHZY_LDF" --refs "E:\AI\data\CS1.JPG" "E:\AI\data\CS2.PNG" --top 500 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 100 --skip-outro 150
+
+# for 锦绣安宁
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\JXAN" --refs "E:\AI\data\CS1.JPG" "E:\AI\data\CS2.PNG" --top 500 --fps 1  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 100 --skip-outro 150
+
+# for 成何体统
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\CHTT" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 120 --skip-outro 140
+
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\CHTT2" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 120 --skip-outro 140
+
+# for 成何体统test
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --video "E:\AI\downloads\CHTT\clips\S01E01_clip_02.mp4" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 150 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface"
+
+
+# for 听说你喜欢我
+python "E:\AI\amazing-ai-prompts\scripts\extract_face_frames.py" --dir "E:\AI\downloads\LikeMe" --refs "E:\AI\data\WCR_face1.png" "E:\AI\data\WCR_face3.png" "E:\AI\data\WCR_side_face2.png" "E:\AI\data\WCR_side_face4.png" --top 500 --fps 2  --blur 10  --model-dir "D:\AI\ComfyUI_models\insightface" --skip-intro 100 --skip-outro 150
 
 
 ```
@@ -249,3 +271,25 @@ output_frames/
 ---
 
 > 首次运行需下载 InsightFace buffalo_l 模型，约 500MB，之后缓存本地。
+
+---
+
+## 性能优化历程
+
+原始版本处理一个 4K 视频需要约 70 分钟，经过以下 7 轮优化降至约 25 分钟。
+
+| # | 优化内容 | 触发原因 |
+|---|---------|---------|
+| 1 | Stage 1 送检前降采样到 1080p，输出保持原始分辨率 | 人脸检测计算量过大 |
+| 2 | 加 per-step 计时埋点，定位瓶颈 | 70min 不可接受，需找慢在哪 |
+| 3 | 全面重构：FFmpeg NVDEC 管道两阶段架构（Stage1 采样+检测，Stage2 seek 原始帧保存） | 计时显示 `cap.read` 占 93%，OpenCV 软解码每帧含跳过帧 |
+| 4 | onnxruntime 强制 GPU，启动时逐模型验证，禁止 CPU fallback | 确保 InsightFace 所有子模型真正跑在 GPU |
+| 5 | Stage 2 seek 加 CUDA 硬件解码 + `ThreadPoolExecutor(max_workers=4)` 并行 | Stage 2 每帧约 1s（软解 H.265 逐帧 seek） |
+| 6 | Stage 2 改为 FFmpeg 直接写 JPEG 文件，消除 raw-pipe | 18.5MB/帧 × 86 帧走 Python 管道，Windows 管道 ~40MB/s 成瓶颈 |
+| 7 | `det_h` 从 1080 降到 720，管道数据量减少 ~2.2x | Stage 1 管道吞吐仍是主要瓶颈 |
+
+### 关键结论
+
+- **Stage 1 根本瓶颈**：Windows 管道带宽约 40MB/s，帧越大越慢；`det_h=720` 时帧为 2.76MB，`det_h=640` 时为 2.18MB（再减 21%，且对 16:9 视频检测质量无影响，因 InsightFace 内部均缩至 640×360 后填充）
+- **采样率**：60fps 素材用 `--fps 1` 足够，相邻帧差异在帧级（16ms）几乎为零，多样性变化在秒级
+- **Stage 2 开销**：H.265 每次 seek 需定位 I 帧再向前解码，GOP 越长越慢；500 张帧用 4 workers 约 455s（每帧均摊约 3.6s）

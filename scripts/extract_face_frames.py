@@ -34,7 +34,9 @@ extract_face_frames.py
     --angle     最大允许偏角°（默认40）
     --blur      最低清晰度分（默认80，Laplacian方差）
     --min-face  人脸短边最小像素数（默认100px，过小的脸无法用于训练）
-    --solo      只保留目标人物单独出现的帧（过滤多人画面）
+    --solo          只保留目标人物单独出现的帧（过滤多人画面）
+    --skip-intro    跳过片头的秒数（默认0，例如 --skip-intro 90 跳过前1.5分钟）
+    --skip-outro    跳过片尾的秒数（默认0，例如 --skip-outro 60 跳过最后1分钟）
 """
 
 import argparse
@@ -42,8 +44,10 @@ import csv
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -68,18 +72,28 @@ def load_face_app(model_dir=None):
     """初始化 InsightFace，使用 buffalo_l 模型（含检测+识别）"""
     import onnxruntime as ort
     available = ort.get_available_providers()
-    if "CUDAExecutionProvider" in available:
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        print("🚀 使用 GPU (CUDA) 加速")
-    else:
-        providers = ["CPUExecutionProvider"]
-        print("💻 使用 CPU 模式")
+    if "CUDAExecutionProvider" not in available:
+        print("❌ CUDA 不可用，当前环境支持的 provider:", available)
+        sys.exit(1)
+    # 不加 CPUExecutionProvider，防止 session 级别静默 fallback
+    providers = ["CUDAExecutionProvider"]
+    print("🚀 使用 GPU (CUDA) 加速")
     kwargs = {"name": "buffalo_l", "providers": providers}
     if model_dir:
         kwargs["root"] = model_dir
         print(f"📁 模型目录: {model_dir}")
     app = FaceAnalysis(**kwargs)
     app.prepare(ctx_id=0, det_size=(640, 640))
+    # 验证各子模型确实挂载在 CUDA EP 上
+    for name, model in app.models.items():
+        session = getattr(model, "session", None)
+        if session is None:
+            continue
+        active = session.get_providers()
+        if "CUDAExecutionProvider" not in active:
+            print(f"❌ 模型 {name} 未使用 CUDA，实际 provider: {active}")
+            sys.exit(1)
+    print(f"   已验证 {len(app.models)} 个子模型均在 GPU 上运行")
     return app
 
 
@@ -123,7 +137,56 @@ def estimate_yaw(face):
 
 
 
-def process_video(app, video_path, ref_embeddings, output_dir, top_n, sample_fps, sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite=True):
+def iter_frames_ffmpeg(video_path, sample_fps, start_sec, clip_dur, det_w, det_h):
+    """Stage 1: yield (local_idx, frame_bgr) at det_w×det_h via FFmpeg pipe.
+    Tries CUDA hw-decode first, falls back to software."""
+    frame_bytes = det_w * det_h * 3
+    for attempt, hw_args in enumerate([["-hwaccel", "cuda"], []]):
+        cmd = (
+            ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+            + hw_args
+            + ["-ss", f"{start_sec:.3f}",
+               "-i", str(video_path),
+               "-t", f"{clip_dur:.3f}",
+               "-vf", f"fps={sample_fps},scale={det_w}:{det_h}",
+               "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"]
+        )
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        local_idx = 0
+        try:
+            while True:
+                raw = proc.stdout.read(frame_bytes)
+                if len(raw) < frame_bytes:
+                    break
+                yield local_idx, np.frombuffer(raw, dtype=np.uint8).reshape((det_h, det_w, 3))
+                local_idx += 1
+        finally:
+            proc.stdout.close()
+            proc.wait()
+        if local_idx > 0 or attempt == 1:
+            return
+        print("   ⚠️  CUDA 硬件解码失败，回退到软件解码...")
+
+
+def seek_and_write_ffmpeg(video_path, ts_sec, output_path):
+    """Stage 2: seek to ts_sec, write one JPEG directly via FFmpeg — no Python pipe."""
+    for hw_args in [["-hwaccel", "cuda"], []]:
+        cmd = (
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+            + hw_args
+            + ["-ss", f"{ts_sec:.3f}",
+               "-i", str(video_path),
+               "-frames:v", "1",
+               "-q:v", "2",
+               str(output_path)]
+        )
+        ret = subprocess.run(cmd, capture_output=True)
+        if ret.returncode == 0:
+            return True
+    return False
+
+
+def process_video(app, video_path, ref_embeddings, output_dir, top_n, sample_fps, sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite=True, skip_intro_sec=0.0, skip_outro_sec=0.0):
     output_dir = Path(output_dir)
     if output_dir.exists() and any(output_dir.iterdir()):
         if not overwrite:
@@ -133,143 +196,182 @@ def process_video(app, video_path, ref_embeddings, output_dir, top_n, sample_fps
         print(f"🗑  已清空旧目录: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # 只用 cap 读元数据，读完即释放
     cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
     if not cap.isOpened():
         print(f"❌ 无法打开视频: {video_path}")
         sys.exit(1)
-
     video_fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    vid_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    vid_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+
     duration_sec = total_frames / video_fps
-    step = max(1, int(video_fps / sample_fps))
+    start_sec = skip_intro_sec
+    clip_dur = max(0.0, duration_sec - skip_outro_sec - start_sec)
+    end_sec = start_sec + clip_dur
+    total_to_process = int(clip_dur * sample_fps)
+
+    # 检测用分辨率：高不超过 720，宽等比对齐偶数
+    det_h = min(vid_h, 720)
+    det_w = int(vid_w * det_h / vid_h) & ~1
+    scale_to_orig = vid_h / det_h  # det 坐标 → 原始分辨率坐标的倍数
 
     print(f"📹 视频: {video_path}")
-    print(f"   时长: {duration_sec/60:.1f} 分钟 | 总帧数: {total_frames} | 采样步长: {step}帧")
-    print(f"   预计处理帧数: {total_frames // step}")
+    print(f"   时长: {duration_sec/60:.1f} 分钟 | 总帧数: {total_frames} | 采样: {sample_fps}fps")
+    if skip_intro_sec > 0:
+        print(f"   跳过片头: {skip_intro_sec:.1f}s（从 {start_sec:.1f}s 开始）")
+    if skip_outro_sec > 0:
+        print(f"   跳过片尾: {skip_outro_sec:.1f}s（到 {end_sec:.1f}s 结束）")
+    print(f"   预计处理帧数: {total_to_process}")
+    if det_h < vid_h:
+        print(f"   分辨率: {vid_w}×{vid_h} | Stage1 检测 {det_w}×{det_h}，Stage2 保存原始分辨率")
+    else:
+        print(f"   分辨率: {vid_w}×{vid_h}（无需降采样）")
     if solo:
         print(f"   模式: 单人独照（多人帧将跳过）")
-    print(f"🔍 开始扫描...")
+    print(f"🔍 Stage1：扫描 + 过滤...")
 
     results = []
-    frame_idx = 0
     processed = 0
     skipped_multi = 0
-    total_to_process = total_frames // step
     start_time = time.time()
+    _t = {"detect": 0.0, "filter": 0.0}
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    for local_idx, frame in iter_frames_ffmpeg(video_path, sample_fps, start_sec, clip_dur, det_w, det_h):
+        processed += 1
+        ts = start_sec + local_idx / sample_fps
+        actual_frame_idx = int(ts * video_fps)
 
-        if frame_idx % step == 0:
-            processed += 1
-            elapsed = time.time() - start_time
-            fps_rate = processed / elapsed if elapsed > 0 else 0
-            remaining = (total_to_process - processed) / fps_rate if fps_rate > 0 else 0
-            pct = processed / total_to_process * 100 if total_to_process > 0 else 0
-            passed_count = sum(1 for r in results if not r["filtered_reason"])
-            print(
-                f"\r   进度: {processed}/{total_to_process} ({pct:.1f}%)"
-                f"  已找到: {passed_count}张"
-                f"  剩余: {remaining/60:.1f}min",
-                end="", flush=True
-            )
+        elapsed = time.time() - start_time
+        fps_rate = processed / elapsed if elapsed > 0 else 0
+        remaining = (total_to_process - processed) / fps_rate if fps_rate > 0 else 0
+        pct = processed / total_to_process * 100 if total_to_process > 0 else 0
+        passed_count = sum(1 for r in results if not r["filtered_reason"])
+        print(
+            f"\r   进度: {processed}/{total_to_process} ({pct:.1f}%)"
+            f"  已找到: {passed_count}张"
+            f"  剩余: {remaining/60:.1f}min",
+            end="", flush=True
+        )
 
-            faces = app.get(frame)
-            if not faces:
-                frame_idx += 1
+        _t0 = time.perf_counter()
+        faces = app.get(frame)
+        _t["detect"] += time.perf_counter() - _t0
+
+        if not faces:
+            continue
+
+        face_count = len(faces)
+        filtered_reason = ""
+
+        _t0 = time.perf_counter()
+        if solo and face_count > 1:
+            skipped_multi += 1
+            filtered_reason = "multi_person"
+
+        best_sim = 0.0
+        best_face = None
+        for face in faces:
+            if not hasattr(face, 'normed_embedding') or face.normed_embedding is None:
                 continue
+            sim = max(cosine_similarity(face.normed_embedding, ref_emb) for ref_emb in ref_embeddings)
+            if sim > best_sim:
+                best_sim = sim
+                best_face = face
 
-            face_count = len(faces)
-            filtered_reason = ""
+        if best_face is None:
+            _t["filter"] += time.perf_counter() - _t0
+            continue
 
-            if solo and face_count > 1:
-                skipped_multi += 1
-                filtered_reason = "multi_person"
+        if not filtered_reason and best_sim < sim_thresh:
+            filtered_reason = "low_sim"
 
-            # 找到与目标人物最相似的人脸
-            best_sim = 0.0
-            best_face = None
-            for face in faces:
-                if not hasattr(face, 'normed_embedding') or face.normed_embedding is None:
-                    continue
-                sim = max(cosine_similarity(face.normed_embedding, ref_emb) for ref_emb in ref_embeddings)
-                if sim > best_sim:
-                    best_sim = sim
-                    best_face = face
+        yaw = estimate_yaw(best_face)
+        if not filtered_reason and yaw > angle_thresh:
+            filtered_reason = "high_angle"
 
-            if best_face is None:
-                frame_idx += 1
-                continue
+        box = best_face.bbox.astype(int)
+        x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(det_w, box[2]), min(det_h, box[3])
+        face_crop_tight = frame[y1:y2, x1:x2]
+        if face_crop_tight.size == 0:
+            _t["filter"] += time.perf_counter() - _t0
+            continue
 
-            if not filtered_reason and best_sim < sim_thresh:
-                filtered_reason = "low_sim"
+        # face_size 换算回原始分辨率（粗估），阈值语义跨画质一致
+        face_short_side = int(min(x2 - x1, y2 - y1) * scale_to_orig)
+        if not filtered_reason and face_short_side < min_face_px:
+            filtered_reason = "face_too_small"
 
-            yaw = estimate_yaw(best_face)
-            if not filtered_reason and yaw > angle_thresh:
-                filtered_reason = "high_angle"
+        gray_crop = cv2.cvtColor(face_crop_tight, cv2.COLOR_BGR2GRAY)
+        blur_score = laplacian_variance(gray_crop)
+        if not filtered_reason and blur_score < blur_thresh:
+            filtered_reason = "blurry"
 
-            box = best_face.bbox.astype(int)
-            x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(frame.shape[1], box[2]), min(frame.shape[0], box[3])
-            face_crop_tight = frame[y1:y2, x1:x2]
-            if face_crop_tight.size == 0:
-                frame_idx += 1
-                continue
+        blur_norm = min(blur_score / 2000.0, 1.0)
+        composite = best_sim * 0.75 + blur_norm * 0.25
+        _t["filter"] += time.perf_counter() - _t0
 
-            face_short_side = min(x2 - x1, y2 - y1)
-            if not filtered_reason and face_short_side < min_face_px:
-                filtered_reason = "face_too_small"
+        results.append({
+            "frame_idx": actual_frame_idx,
+            "ts_sec": ts,
+            "timecode": f"{int(ts//60):02d}:{ts%60:05.2f}",
+            "similarity": round(best_sim, 4),
+            "blur_score": round(blur_score, 1),
+            "yaw_deg": round(yaw, 1),
+            "face_count": face_count,
+            "face_size(px)": face_short_side,
+            "composite": round(composite, 4),
+            "filtered_reason": filtered_reason,
+        })
 
-            gray_crop = cv2.cvtColor(face_crop_tight, cv2.COLOR_BGR2GRAY)
-            blur_score = laplacian_variance(gray_crop)
+    print()
 
-            if not filtered_reason and blur_score < blur_thresh:
-                filtered_reason = "blurry"
-
-            blur_norm = min(blur_score / 2000.0, 1.0)
-            composite = best_sim * 0.75 + blur_norm * 0.25
-
-            ts = frame_idx / video_fps
-            results.append({
-                "frame_idx": frame_idx,
-                "timecode": f"{int(ts//60):02d}:{ts%60:05.2f}",
-                "similarity": round(best_sim, 4),
-                "blur_score": round(blur_score, 1),
-                "yaw_deg": round(yaw, 1),
-                "face_count": face_count,
-                "face_size(px)": face_short_side,
-                "composite": round(composite, 4),
-                "filtered_reason": filtered_reason,
-                "frame": frame.copy() if not filtered_reason else None,
-            })
-
-        frame_idx += 1
-
-    cap.release()
-    print()  # 结束进度行
+    total_timed = sum(_t.values())
+    print(f"\n⏱  Stage1 耗时（共 {processed} 帧）:")
+    for key, label in {"detect": "人脸推理 app.get", "filter": "相似/质量过滤"}.items():
+        secs = _t[key]
+        pct = secs / total_timed * 100 if total_timed > 0 else 0
+        avg_ms = secs / processed * 1000 if processed > 0 else 0
+        print(f"   {label:<22} {secs:6.1f}s  {pct:5.1f}%  avg {avg_ms:5.1f}ms/帧  {'█' * int(pct / 5)}")
 
     if skipped_multi:
         print(f"   (跳过多人帧: {skipped_multi} 张)")
 
-    elapsed_total = time.time() - start_time
-    print(f"✅ 扫描完成，耗时 {elapsed_total/60:.1f} 分钟，找到符合条件的帧: {len(results)} 张")
-
+    elapsed_stage1 = time.time() - start_time
     passed = [r for r in results if not r["filtered_reason"]]
+    print(f"✅ Stage1 完成，耗时 {elapsed_stage1/60:.1f} 分钟，通过过滤: {len(passed)} 张")
+
     if not passed:
         print("⚠️  没有找到目标人物，请检查参考照片或降低 --sim 阈值")
-        # 仍写 CSV，方便排查
 
-    # 从通过过滤的帧中取 top N 保存图片
+    # Stage 2：按 composite 排序，seek 原始帧并保存
     passed.sort(key=lambda x: x["composite"], reverse=True)
     top_results = passed[:top_n]
-    print(f"💾 保存 Top {len(top_results)} 张到: {output_dir}")
+    print(f"\n💾 Stage2：seek 原始帧，保存 Top {len(top_results)} 张到: {output_dir}")
+
     fname_map = {}
-    for r in top_results:
+    t2_start = time.time()
+    done_count = 0
+
+    def _seek_and_save(r):
         multi_tag = f"_multi{r['face_count']}" if r["face_count"] > 1 else ""
         fname = f"frame_{r['frame_idx']:07d}_{r['timecode'].replace(':', '-')}_sim{r['similarity']:.2f}{multi_tag}.jpg"
-        cv2.imwrite(str(output_dir / fname), r["frame"])
-        fname_map[r["frame_idx"]] = fname
+        success = seek_and_write_ffmpeg(video_path, r["ts_sec"], output_dir / fname)
+        return r["frame_idx"], fname if success else None
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_seek_and_save, r): r for r in top_results}
+        for future in as_completed(futures):
+            frame_idx, fname = future.result()
+            done_count += 1
+            print(f"\r   [{done_count}/{len(top_results)}] seeking...", end="", flush=True)
+            if fname:
+                fname_map[frame_idx] = fname
+            else:
+                print(f"\n   ⚠️  无法读取帧 {futures[future]['timecode']}，跳过")
+    print(f"\r   Stage2 完成，耗时 {time.time()-t2_start:.1f}s              ")
 
     # 写 CSV：全部有人脸的帧（含被过滤的），按时间顺序
     results.sort(key=lambda x: x["frame_idx"])
@@ -278,7 +380,7 @@ def process_video(app, video_path, ref_embeddings, output_dir, top_n, sample_fps
         writer = csv.DictWriter(f, fieldnames=["frame_idx", "timecode", "similarity", "blur_score", "yaw_deg", "face_count", "face_size(px)", "composite", "filtered_reason", "filename"])
         writer.writeheader()
         for r in results:
-            writer.writerow({k: v for k, v in r.items() if k != "frame"} | {"filename": fname_map.get(r["frame_idx"], "")})
+            writer.writerow({k: v for k, v in r.items() if k != "ts_sec"} | {"filename": fname_map.get(r["frame_idx"], "")})
 
     print(f"📊 报告已保存: {csv_path}")
     print(f"\n🏆 Top 5 最优帧:")
@@ -304,7 +406,8 @@ def save_progress(progress_path, progress):
 
 
 def process_directory(app, video_dir, ref_embeddings, base_output, top_n, sample_fps,
-                      sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite):
+                      sim_thresh, angle_thresh, blur_thresh, min_face_px, solo, overwrite,
+                      skip_intro_sec=0.0, skip_outro_sec=0.0):
     video_dir = Path(video_dir)
     mp4_files = sorted(video_dir.glob("*.mp4")) + sorted(video_dir.glob("*.MP4"))
     # 去重（Windows 不区分大小写，可能重复）
@@ -365,6 +468,8 @@ def process_directory(app, video_dir, ref_embeddings, base_output, top_n, sample
                 min_face_px=min_face_px,
                 solo=solo,
                 overwrite=overwrite,
+                skip_intro_sec=skip_intro_sec,
+                skip_outro_sec=skip_outro_sec,
             )
             end_time = datetime.now()
             # 统计实际保存帧数
@@ -419,6 +524,8 @@ def main():
     parser.add_argument("--solo", action="store_true", help="只保留画面中只有目标人物单独出现的帧")
     parser.add_argument("--no-overwrite", action="store_true", help="输出目录非空时报错退出，而非自动清空")
     parser.add_argument("--model-dir", default=None, help="InsightFace 模型根目录（默认 ~/.insightface）")
+    parser.add_argument("--skip-intro", type=float, default=0.0, metavar="SEC", help="跳过片头秒数（默认0，例如 90 表示跳过前1.5分钟）")
+    parser.add_argument("--skip-outro", type=float, default=0.0, metavar="SEC", help="跳过片尾秒数（默认0，例如 60 表示跳过最后1分钟）")
     args = parser.parse_args()
 
     print("🦐 人脸帧提取工具 v1.2")
@@ -453,6 +560,8 @@ def main():
             min_face_px=args.min_face,
             solo=args.solo,
             overwrite=overwrite,
+            skip_intro_sec=args.skip_intro,
+            skip_outro_sec=args.skip_outro,
         )
     else:
         output = args.output
@@ -472,6 +581,8 @@ def main():
             min_face_px=args.min_face,
             solo=args.solo,
             overwrite=overwrite,
+            skip_intro_sec=args.skip_intro,
+            skip_outro_sec=args.skip_outro,
         )
 
 
