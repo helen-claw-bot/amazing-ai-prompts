@@ -1,44 +1,49 @@
 #!/usr/bin/env python3
 """
-classify_faces.py
+classify_faces.py  v2.0
 将人脸图片按 角度×表情 分类到子文件夹，用于 LoRA 训练数据集策展。
+
+方案来源：
+    InsightFace（人脸检测+embedding身份确认+去重）
+    FaceXFormer（角度/表情/遮挡/闭眼 多任务一体）
+    fastdup（批量去重+模糊检测）
 
 设计为 extract_face_frames.py 的下游工具：
     extract → 提取人脸帧
     classify → 按角度×表情分桶、去重、质量排序
 
-依赖（与 extract_face_frames.py 相同 + 可选 hsemotion）:
+依赖安装（numpy 1.26.4 兼容）:
     pip install insightface opencv-python onnxruntime-gpu numpy<2.0
-    pip install hsemotion-onnx   # 可选，表情识别更准
+    pip install facexformer_pipeline    # 角度+表情+属性（首次运行自动下载模型）
+    pip install fastdup                  # 去重+模糊检测
 
 用法:
-    # 对 extract 输出的目录分类
-    python scripts/classify_faces.py --input E:\\AI\\LZJ_faces --output E:\\AI\\LZJ_classified --report
+    # 基本用法（对 extract 输出目录分类）
+    python scripts/classify_faces.py -i E:\\AI\\LZJ_faces -o E:\\AI\\LZJ_classified --report
 
-    # 递归扫描多个子目录
-    python scripts/classify_faces.py --input E:\\AI\\downloads\\LZJ --output E:\\AI\\classified -r --report
+    # 完整 pipeline（去重 + 每桶限30张）
+    python scripts/classify_faces.py -i ./faces -o ./dataset --max-per-bin 30 --report
 
-    # 去重 + 每桶限30张（用于 LoRA 训练集）
-    python scripts/classify_faces.py -i ./faces -o ./dataset --dedup 0.92 --max-per-bin 30
+    # 只用 InsightFace（不装 FaceXFormer 也能跑，精度略低）
+    python scripts/classify_faces.py -i ./faces -o ./dataset --no-facexformer
 
-    # 只按角度分（不分表情）
-    python scripts/classify_faces.py -i ./faces -o ./classified --no-expression
-
-    # 符号链接模式（节省磁盘，Windows 需管理员权限）
-    python scripts/classify_faces.py -i ./faces -o ./classified --symlink
+    # 跳过 fastdup（不去重，只分类）
+    python scripts/classify_faces.py -i ./faces -o ./dataset --no-fastdup
 
 参数说明:
-    --input         输入图片目录（支持 extract 输出的 *_faces 目录）
-    --output        输出分类目录
-    --recursive     递归扫描子目录
-    --max-per-bin   每个桶最多保留几张（按质量排序取top，0=不限）
-    --no-expression 不做表情分类，只按角度分
-    --symlink       用符号链接代替复制文件
-    --move          移动文件而非复制
-    --dedup         去重阈值，embedding余弦相似度超过此值视为重复（默认0.92，0=禁用）
-    --min-quality   最低质量阈值，低于此分数直接丢弃（默认0，不过滤）
-    --model-dir     InsightFace模型目录
-    --report        生成分类统计报告
+    --input, -i         输入图片目录
+    --output, -o        输出分类目录
+    --recursive, -r     递归扫描子目录
+    --max-per-bin       每个桶最多保留几张（按质量排序取top，0=不限）
+    --no-expression     不做表情分类，只按角度分
+    --no-facexformer    不用 FaceXFormer，回退到 InsightFace+规则
+    --no-fastdup        不用 fastdup 去重
+    --symlink           符号链接代替复制
+    --move              移动而非复制
+    --dedup             去重阈值（embedding余弦相似度，默认0.92，0=禁用）
+    --min-quality       最低质量分（默认0）
+    --model-dir         InsightFace 模型目录
+    --report            生成统计报告
 """
 
 import argparse
@@ -63,110 +68,167 @@ try:
     import insightface
     from insightface.app import FaceAnalysis
 except ImportError:
-    print("❌ 请先安装依赖: pip install insightface opencv-python onnxruntime-gpu numpy<2.0")
+    print("❌ 请先安装: pip install insightface opencv-python onnxruntime-gpu numpy<2.0")
     sys.exit(1)
 
-# 表情识别（可选）
+# FaceXFormer（可选）
 try:
-    from hsemotion_onnx.facial_emotions import HSEmotionRecognizer
-    HAS_HSEMOTION = True
+    from facexformer_pipeline import FacexformerPipeline
+    HAS_FACEXFORMER = True
 except ImportError:
-    HAS_HSEMOTION = False
+    HAS_FACEXFORMER = False
+
+# fastdup（可选）
+try:
+    import fastdup
+    HAS_FASTDUP = True
+except ImportError:
+    HAS_FASTDUP = False
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif"}
 
 
 # ============================================================
-# 模型初始化（复用 extract 的逻辑）
+# 角度分桶 (8 类)
 # ============================================================
 
-def load_face_app(model_dir=None):
-    """初始化 InsightFace，使用 buffalo_l 模型（含检测+识别）"""
-    import onnxruntime as ort
-    available = ort.get_available_providers()
-    if "CUDAExecutionProvider" not in available:
-        print("⚠️  CUDA 不可用，回退到 CPU（速度较慢）")
-        providers = ["CPUExecutionProvider"]
+def yaw_pitch_to_angle_bin(yaw: float, pitch: float) -> str:
+    """
+    8类角度分桶：
+    front, left_30, right_30, left_60, right_60, profile, up, down
+    """
+    # pitch 优先：明显仰/俯视单独归类
+    if pitch > 20:
+        return "up"
+    if pitch < -20:
+        return "down"
+
+    # yaw 分桶
+    abs_yaw = abs(yaw)
+    if abs_yaw < 15:
+        return "front"
+    elif abs_yaw < 45:
+        return "left_30" if yaw < 0 else "right_30"
+    elif abs_yaw < 70:
+        return "left_60" if yaw < 0 else "right_60"
     else:
-        providers = ["CUDAExecutionProvider"]
-        print("🚀 使用 GPU (CUDA) 加速")
+        return "profile"
 
-    kwargs = {"name": "buffalo_l", "providers": providers}
-    if model_dir:
-        kwargs["root"] = model_dir
-        print(f"📁 模型目录: {model_dir}")
-    app = FaceAnalysis(**kwargs)
-    app.prepare(ctx_id=0, det_size=(640, 640))
 
-    # 验证 GPU
-    if "CUDAExecutionProvider" in providers:
-        for name, model in app.models.items():
-            session = getattr(model, "session", None)
-            if session is None:
-                continue
-            active = session.get_providers()
-            if "CUDAExecutionProvider" not in active:
-                print(f"⚠️  模型 {name} 未使用 CUDA，实际 provider: {active}")
-        print(f"   已加载 {len(app.models)} 个子模型")
-    return app
+ANGLE_BINS = ["front", "left_30", "right_30", "left_60", "right_60", "profile", "up", "down"]
 
 
 # ============================================================
-# 角度分桶
+# 表情分桶 (6 类)
 # ============================================================
 
-YAW_BINS = [
-    ("left60",  -90, -45),
-    ("left30",  -45, -15),
-    ("front",   -15,  15),
-    ("right30",  15,  45),
-    ("right60",  45,  90),
-]
-
-PITCH_BINS = [
-    ("up",    15,  90),
-    ("level", -15,  15),
-    ("down",  -90, -15),
-]
-
-
-def get_yaw_bin(yaw: float) -> str:
-    for name, lo, hi in YAW_BINS:
-        if lo <= yaw < hi:
-            return name
-    return "right60" if yaw >= 90 else "left60"
-
-
-def get_pitch_bin(pitch: float) -> str:
-    for name, lo, hi in PITCH_BINS:
-        if lo <= pitch < hi:
-            return name
-    return "up" if pitch >= 90 else "down"
-
-
-def get_angle_bin(yaw: float, pitch: float) -> str:
-    return f"{get_yaw_bin(yaw)}_{get_pitch_bin(pitch)}"
+EXPRESSION_BINS = ["neutral", "smile", "laugh", "serious", "mouth_open", "eyes_closed"]
 
 
 # ============================================================
-# 表情分类
+# FaceXFormer 封装
 # ============================================================
 
-EMOTION_MAP = {
-    "Anger": "serious",
-    "Contempt": "serious",
-    "Disgust": "serious",
-    "Fear": "surprise",
-    "Happiness": "smile",
-    "Neutral": "neutral",
-    "Sadness": "serious",
-    "Surprise": "surprise",
-}
+class FaceXFormerAnalyzer:
+    """使用 FaceXFormer 进行角度+表情+属性分析"""
+
+    def __init__(self):
+        print("🔄 加载 FaceXFormer 模型...")
+        self.pipeline = FacexformerPipeline(
+            debug=False,
+            tasks=['headpose', 'attributes']
+        )
+        print("✅ FaceXFormer 就绪")
+
+    def analyze(self, img_bgr, face_box=None) -> dict:
+        """
+        返回 {"yaw", "pitch", "roll", "expression_bin"}
+        """
+        try:
+            # FaceXFormer 需要 RGB
+            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+            # 如果有 face_box，传入坐标避免重复检测
+            kwargs = {}
+            if face_box is not None:
+                x1, y1, x2, y2 = face_box
+                kwargs["face_coordinates"] = [int(x1), int(y1), int(x2), int(y2)]
+
+            results = self.pipeline.run_model(img_rgb, **kwargs)
+
+            # headpose: [yaw, pitch, roll]
+            headpose = results.get("headpose")
+            if headpose is not None:
+                yaw, pitch, roll = float(headpose[0]), float(headpose[1]), float(headpose[2])
+            else:
+                yaw, pitch, roll = 0.0, 0.0, 0.0
+
+            # attributes: 包含表情/遮挡/闭眼等
+            attrs = results.get("attributes", {})
+            expr_bin = self._map_expression(attrs)
+
+            return {
+                "yaw": yaw,
+                "pitch": pitch,
+                "roll": roll,
+                "expression_bin": expr_bin,
+                "attributes": attrs,
+            }
+        except Exception as e:
+            return {"yaw": 0, "pitch": 0, "roll": 0, "expression_bin": "neutral", "attributes": {}, "error": str(e)}
+
+    def _map_expression(self, attrs: dict) -> str:
+        """从 FaceXFormer attributes 映射到 6 类表情"""
+        # FaceXFormer attributes 格式取决于模型版本
+        # 常见输出：expression 字段或多个属性字段
+
+        # 闭眼优先
+        if attrs.get("eyes_closed") or attrs.get("Narrow_Eyes"):
+            return "eyes_closed"
+
+        # 嘴巴张开
+        if attrs.get("Mouth_Slightly_Open") or attrs.get("mouth_open"):
+            return "mouth_open"
+
+        # 笑容
+        smiling = attrs.get("Smiling") or attrs.get("smiling")
+        if smiling:
+            # 区分 smile 和 laugh（如果有强度信息）
+            if attrs.get("Big_Lips") or attrs.get("mouth_open"):
+                return "laugh"
+            return "smile"
+
+        # 严肃（皱眉/生气）
+        if attrs.get("Frowning") or attrs.get("Angry"):
+            return "serious"
+
+        return "neutral"
 
 
-def get_expression_rule_based(face) -> str:
-    """基于关键点的简易表情判断（无需额外模型）"""
+# ============================================================
+# InsightFace fallback 方案（不需要 FaceXFormer）
+# ============================================================
+
+def estimate_pose_insightface(face) -> tuple:
+    """从 InsightFace 获取 yaw, pitch"""
+    if hasattr(face, 'pose') and face.pose is not None and len(face.pose) >= 2:
+        return float(face.pose[0]), float(face.pose[1])
+
+    # fallback: 关键点估算
+    kps = face.kps
+    left_eye, right_eye, nose = kps[0], kps[1], kps[2]
+    eye_center_x = (left_eye[0] + right_eye[0]) / 2
+    eye_width = abs(right_eye[0] - left_eye[0])
+    if eye_width < 3:
+        return 0.0, 0.0
+    offset = (nose[0] - eye_center_x) / eye_width
+    yaw = offset * 60
+    return yaw, 0.0
+
+
+def estimate_expression_rule(face) -> str:
+    """基于关键点的简易表情规则"""
     kps = face.kps
     left_eye, right_eye = kps[0], kps[1]
     left_mouth, right_mouth = kps[3], kps[4]
@@ -176,48 +238,55 @@ def get_expression_rule_based(face) -> str:
         return "neutral"
 
     mouth_width = abs(float(right_mouth[0]) - float(left_mouth[0]))
-    width_ratio = mouth_width / eye_dist
+    ratio = mouth_width / eye_dist
 
-    if width_ratio > 1.1:
+    if ratio > 1.2:
+        return "laugh"
+    elif ratio > 1.05:
         return "smile"
-    elif width_ratio < 0.7:
+    elif ratio < 0.7:
         return "mouth_open"
     return "neutral"
 
 
-class ExpressionClassifier:
-    """表情分类器：优先 HSEmotion，fallback 到规则"""
+# ============================================================
+# 模型初始化
+# ============================================================
 
-    def __init__(self, use_model=True):
-        self.fer = None
-        if use_model and HAS_HSEMOTION:
-            try:
-                self.fer = HSEmotionRecognizer(model_name='enet_b0_8_va_mtl')
-                print("✅ 表情分类: HSEmotion 模型")
-            except Exception as e:
-                print(f"⚠️  HSEmotion 加载失败({e})，回退到规则")
-        if self.fer is None:
-            print("ℹ️  表情分类: 规则模式（安装 hsemotion-onnx 可提升精度）")
+def load_face_app(model_dir=None):
+    """初始化 InsightFace（与 extract_face_frames.py 一致）"""
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    if "CUDAExecutionProvider" in available:
+        providers = ["CUDAExecutionProvider"]
+        print("🚀 InsightFace: GPU (CUDA)")
+    else:
+        providers = ["CPUExecutionProvider"]
+        print("⚠️  InsightFace: CPU（较慢）")
 
-    def classify(self, face, face_crop_bgr) -> str:
-        if self.fer is not None:
-            try:
-                face_rgb = cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2RGB)
-                emotion, _ = self.fer.predict_emotions(face_rgb)
-                return EMOTION_MAP.get(emotion, "neutral")
-            except Exception:
-                pass
-        return get_expression_rule_based(face)
+    kwargs = {"name": "buffalo_l", "providers": providers}
+    if model_dir:
+        kwargs["root"] = model_dir
+    app = FaceAnalysis(**kwargs)
+    app.prepare(ctx_id=0, det_size=(640, 640))
+
+    if "CUDAExecutionProvider" in providers:
+        for name, model in app.models.items():
+            session = getattr(model, "session", None)
+            if session and "CUDAExecutionProvider" not in session.get_providers():
+                print(f"⚠️  {name} 未使用 CUDA")
+        print(f"   {len(app.models)} 个子模型已加载")
+    return app
 
 
 # ============================================================
-# 质量评分（使用 top-10% percentile，抗皮肤稀释）
+# 质量评分
 # ============================================================
 
 def quality_score(img_gray, face) -> float:
-    """质量评分 0-100
-    锐度用 Laplacian top-10% 均值（不被大面积皮肤稀释），
-    结合检测置信度加权。
+    """
+    质量评分 0-100
+    Laplacian top-10% 均值（抗皮肤稀释）+ 检测置信度
     """
     box = face.bbox.astype(int)
     h, w = img_gray.shape[:2]
@@ -229,28 +298,62 @@ def quality_score(img_gray, face) -> float:
 
     roi = img_gray[y1:y2, x1:x2]
     lap = np.abs(cv2.Laplacian(roi, cv2.CV_64F))
-
-    # top-10% 均值：只看最锐利的边缘像素
     threshold = np.percentile(lap, 90)
     top_pixels = lap[lap >= threshold]
     sharpness = float(top_pixels.mean()) if top_pixels.size > 0 else 0.0
 
     det_score = float(face.det_score) * 100
     sharp_score = min(sharpness / 30.0 * 100, 100.0)
-
     return sharp_score * 0.6 + det_score * 0.4
 
 
 # ============================================================
-# 去重（基于 embedding 余弦相似度）
+# fastdup 去重
+# ============================================================
+
+def run_fastdup_dedup(image_dir: str, threshold: float = 0.92) -> set:
+    """
+    用 fastdup 找出重复/近似图片，返回应该被移除的文件路径集合。
+    """
+    if not HAS_FASTDUP:
+        return set()
+
+    print(f"\n🔄 fastdup 去重分析...")
+    import tempfile
+    work_dir = tempfile.mkdtemp(prefix="fastdup_")
+
+    try:
+        fd = fastdup.create(work_dir=work_dir, input_dir=image_dir)
+        fd.run(threshold=threshold, cc_threshold=threshold)
+
+        # 获取重复组
+        duplicates = fd.duplicates()
+        remove_set = set()
+        if duplicates is not None and len(duplicates) > 0:
+            # duplicates 是 DataFrame: [from, to, distance]
+            # 每组保留第一个（质量排序后面再做），标记其余为重复
+            for _, row in duplicates.iterrows():
+                remove_set.add(row['to'])
+
+        print(f"   fastdup 标记 {len(remove_set)} 张为重复")
+        return remove_set
+    except Exception as e:
+        print(f"⚠️  fastdup 运行失败: {e}，跳过去重")
+        return set()
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+# ============================================================
+# embedding 去重（fallback / 补充）
 # ============================================================
 
 def cosine_similarity(a, b):
     return float(np.dot(a, b))
 
 
-def deduplicate(items: list, thresh: float) -> list:
-    """贪心去重：按质量降序，逐个比对已选集，相似度超阈值的丢弃"""
+def deduplicate_by_embedding(items: list, thresh: float) -> list:
+    """贪心去重：按质量降序，相似度超阈值的丢弃"""
     if not items or thresh <= 0:
         return items
 
@@ -290,12 +393,14 @@ def scan_images(input_dir: str, recursive: bool) -> list:
 
 def process_images(args):
     print(f"\n{'='*60}")
-    print(f"  🦐 人脸分类工具 — 角度×表情分桶")
+    print(f"  🦐 人脸分类工具 v2.0 — LoRA 数据集策展")
     print(f"{'='*60}")
     print(f"  输入: {args.input}")
     print(f"  输出: {args.output}")
     print(f"  递归: {'是' if args.recursive else '否'}")
-    print(f"  去重: {args.dedup if args.dedup > 0 else '禁用'}")
+    print(f"  FaceXFormer: {'关闭' if args.no_facexformer else ('可用' if HAS_FACEXFORMER else '未安装')}")
+    print(f"  fastdup: {'关闭' if args.no_fastdup else ('可用' if HAS_FASTDUP else '未安装')}")
+    print(f"  去重阈值: {args.dedup if args.dedup > 0 else '禁用'}")
     print(f"  每桶上限: {args.max_per_bin or '不限'}")
     print(f"  表情分类: {'关闭' if args.no_expression else '开启'}")
     print(f"{'='*60}\n")
@@ -304,24 +409,35 @@ def process_images(args):
     images = scan_images(args.input, args.recursive)
     print(f"📂 扫描到 {len(images)} 张图片")
     if not images:
-        print("⚠️  没找到图片，检查路径和文件后缀")
+        print("⚠️  没找到图片")
         return
 
-    # 初始化
+    # ---- Stage 0: fastdup 预去重 ----
+    fastdup_remove = set()
+    if not args.no_fastdup and HAS_FASTDUP and args.dedup > 0:
+        fastdup_remove = run_fastdup_dedup(args.input, threshold=args.dedup)
+        if fastdup_remove:
+            images = [p for p in images if str(p) not in fastdup_remove and p.name not in fastdup_remove]
+            print(f"   fastdup 后剩余: {len(images)} 张")
+
+    # ---- Stage 1: 加载模型 ----
     app = load_face_app(args.model_dir)
 
-    expr_clf = None
-    if not args.no_expression:
-        expr_clf = ExpressionClassifier(use_model=True)
+    fxf = None
+    if not args.no_facexformer and HAS_FACEXFORMER:
+        fxf = FaceXFormerAnalyzer()
+    elif not args.no_facexformer and not HAS_FACEXFORMER:
+        print("⚠️  FaceXFormer 未安装，回退到 InsightFace+规则")
+        print("   安装: pip install facexformer_pipeline")
 
-    # 处理
+    # ---- Stage 2: 逐图分析 ----
     print(f"\n🔍 分析人脸...")
     bins = defaultdict(list)
     skipped = {"no_face": 0, "low_quality": 0}
     t0 = time.time()
 
     for i, img_path in enumerate(images):
-        if (i + 1) % 200 == 0 or i == 0:
+        if (i + 1) % 100 == 0 or i == 0:
             elapsed = time.time() - t0
             speed = (i + 1) / max(elapsed, 0.01)
             eta = (len(images) - i - 1) / max(speed, 0.01)
@@ -331,51 +447,39 @@ def process_images(args):
         if img is None:
             continue
 
+        # InsightFace 检测（获取 bbox + embedding）
         faces = app.get(img)
         if not faces:
             skipped["no_face"] += 1
             continue
 
-        # 取最大脸
         face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
 
-        # 质量
+        # 质量评分
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         q = quality_score(img_gray, face)
         if q < args.min_quality:
             skipped["low_quality"] += 1
             continue
 
-        # 角度：优先用 face.pose，fallback 到关键点估算
-        if hasattr(face, 'pose') and face.pose is not None and len(face.pose) >= 2:
-            yaw, pitch = float(face.pose[0]), float(face.pose[1])
-        else:
-            # fallback（与 extract 的 estimate_yaw 一致）
-            kps = face.kps
-            left_eye, right_eye, nose = kps[0], kps[1], kps[2]
-            eye_center_x = (left_eye[0] + right_eye[0]) / 2
-            eye_width = abs(right_eye[0] - left_eye[0])
-            if eye_width < 3:
-                skipped["no_face"] += 1
-                continue
-            offset = (nose[0] - eye_center_x) / eye_width
-            yaw = offset * 60
-            pitch = 0.0
-
-        angle_bin = get_angle_bin(yaw, pitch)
-
-        # 表情
-        if expr_clf:
+        # ---- 角度 + 表情 ----
+        if fxf:
+            # FaceXFormer 分析
             box = face.bbox.astype(int)
-            h, w = img.shape[:2]
-            x1, y1 = max(0, box[0]), max(0, box[1])
-            x2, y2 = min(w, box[2]), min(h, box[3])
-            face_crop = img[y1:y2, x1:x2]
-            if face_crop.size > 0:
-                expr_bin = expr_clf.classify(face, face_crop)
-            else:
-                expr_bin = "neutral"
-            bin_name = f"{angle_bin}_{expr_bin}"
+            fxf_result = fxf.analyze(img, face_box=box)
+            yaw = fxf_result["yaw"]
+            pitch = fxf_result["pitch"]
+            expr_bin = fxf_result["expression_bin"] if not args.no_expression else None
+        else:
+            # InsightFace fallback
+            yaw, pitch = estimate_pose_insightface(face)
+            expr_bin = estimate_expression_rule(face) if not args.no_expression else None
+
+        angle_bin = yaw_pitch_to_angle_bin(yaw, pitch)
+
+        # 组合桶名
+        if expr_bin and not args.no_expression:
+            bin_name = f"{angle_bin}/{expr_bin}"
         else:
             bin_name = angle_bin
 
@@ -392,27 +496,30 @@ def process_images(args):
             "embedding": embedding,
             "yaw": round(yaw, 1),
             "pitch": round(pitch, 1),
+            "expression": expr_bin or "",
+            "angle_bin": angle_bin,
         })
 
-    print(f"\r   分析完成{'':30}")
+    print(f"\r   分析完成{'':40}")
     elapsed = time.time() - t0
     total_classified = sum(len(v) for v in bins.values())
-    print(f"\n✅ Stage1 完成 ({elapsed:.1f}s, {len(images)/max(elapsed,0.01):.1f} img/s)")
+    print(f"\n✅ 分析完成 ({elapsed:.1f}s, {len(images)/max(elapsed,0.01):.1f} img/s)")
     print(f"   通过: {total_classified} 张 → {len(bins)} 个桶")
     print(f"   跳过: 无人脸 {skipped['no_face']}, 质量过低 {skipped['low_quality']}")
 
-    # 去重
-    if args.dedup > 0:
-        print(f"\n🔄 去重 (阈值={args.dedup})...")
+    # ---- Stage 3: 桶内 embedding 去重 ----
+    if args.dedup > 0 and not fastdup_remove:
+        # 如果 fastdup 没跑或没装，用 embedding 去重
+        print(f"\n🔄 桶内 embedding 去重 (阈值={args.dedup})...")
         before = sum(len(v) for v in bins.values())
         for bin_name in bins:
             has_emb = any(item["embedding"] is not None for item in bins[bin_name])
             if has_emb:
-                bins[bin_name] = deduplicate(bins[bin_name], args.dedup)
+                bins[bin_name] = deduplicate_by_embedding(bins[bin_name], args.dedup)
             else:
                 bins[bin_name].sort(key=lambda x: x["quality"], reverse=True)
         after = sum(len(v) for v in bins.values())
-        print(f"   {before} → {after} (去除 {before - after} 张重复)")
+        print(f"   {before} → {after} (去除 {before - after} 张)")
 
     # 每桶取 top
     if args.max_per_bin and args.max_per_bin > 0:
@@ -420,19 +527,26 @@ def process_images(args):
             bins[bin_name].sort(key=lambda x: x["quality"], reverse=True)
             bins[bin_name] = bins[bin_name][:args.max_per_bin]
         total_after = sum(len(v) for v in bins.values())
-        print(f"   每桶限 {args.max_per_bin} 张，最终: {total_after} 张")
+        print(f"   每桶限 {args.max_per_bin}，最终: {total_after} 张")
 
-    # 输出文件
-    print(f"\n💾 写入分类结果: {args.output}")
+    # ---- Stage 4: 输出文件 ----
+    print(f"\n💾 写入: {args.output}")
     output_path = Path(args.output)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    # 创建 review/ 和 rejected/ 目录
+    (output_path / "review").mkdir(exist_ok=True)
+    (output_path / "rejected").mkdir(exist_ok=True)
+
     total_output = 0
     csv_rows = []
+    similarity_group_id = 0
 
     for bin_name, items in sorted(bins.items()):
         bin_dir = output_path / bin_name
         bin_dir.mkdir(parents=True, exist_ok=True)
+        similarity_group_id += 1
+
         for item in items:
             src = Path(item["path"])
             dst = bin_dir / src.name
@@ -448,33 +562,47 @@ def process_images(args):
 
             csv_rows.append({
                 "filename": src.name,
-                "bin": bin_name,
+                "angle_bin": item["angle_bin"],
+                "expression": item["expression"],
                 "quality": round(item["quality"], 1),
                 "yaw": item["yaw"],
                 "pitch": item["pitch"],
-                "dest": str(dst),
+                "face_size": "",  # TODO: 从 bbox 计算
+                "similarity_group": similarity_group_id,
+                "selected": "yes",
+                "dest": str(dst.relative_to(output_path)),
             })
             total_output += 1
 
-    print(f"   ✅ 写入 {total_output} 张 → {len(bins)} 个文件夹")
+    print(f"   ✅ {total_output} 张 → {len(bins)} 个文件夹")
 
-    # CSV 报告
-    csv_path = output_path / "classification.csv"
+    # metadata.csv
+    csv_path = output_path / "metadata.csv"
+    fieldnames = ["filename", "angle_bin", "expression", "quality", "yaw", "pitch",
+                  "face_size", "similarity_group", "selected", "dest"]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["filename", "bin", "quality", "yaw", "pitch", "dest"])
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(csv_rows)
-    print(f"📊 CSV: {csv_path}")
+    print(f"📊 metadata.csv: {csv_path}")
 
     # 统计报告
     if args.report:
         report = generate_report(bins)
         report_path = output_path / "report.txt"
         report_path.write_text(report, encoding="utf-8")
-        print(f"📊 报告: {report_path}")
+        print(f"📊 report.txt: {report_path}")
         print(report)
 
-    print(f"\n🎉 完成！")
+    print(f"\n🎉 完成！目录结构:")
+    print(f"   {args.output}/")
+    for bin_name in sorted(list(bins.keys()))[:10]:
+        print(f"   ├── {bin_name}/  ({len(bins[bin_name])} 张)")
+    if len(bins) > 10:
+        print(f"   └── ... ({len(bins) - 10} more)")
+    print(f"   ├── review/     (人工复核)")
+    print(f"   ├── rejected/   (废片)")
+    print(f"   └── metadata.csv")
 
 
 def generate_report(bins: dict) -> str:
@@ -483,7 +611,7 @@ def generate_report(bins: dict) -> str:
     lines.append("  人脸分类统计报告")
     lines.append("=" * 60)
     lines.append("")
-    lines.append(f"{'桶名':<30} {'数量':>6} {'平均质量':>10}")
+    lines.append(f"{'桶':<30} {'数量':>6} {'平均质量':>10}")
     lines.append("-" * 50)
 
     angle_counts = defaultdict(int)
@@ -495,42 +623,49 @@ def generate_report(bins: dict) -> str:
         avg_q = np.mean([it["quality"] for it in items]) if items else 0
         lines.append(f"{bin_name:<30} {count:>6} {avg_q:>10.1f}")
 
-        parts = bin_name.split("_")
-        if len(parts) >= 2:
-            angle_key = f"{parts[0]}_{parts[1]}"
-            angle_counts[angle_key] += count
-        if len(parts) >= 3:
-            expr_counts[parts[2]] += count
+        parts = bin_name.split("/")
+        angle_counts[parts[0]] += count
+        if len(parts) > 1:
+            expr_counts[parts[1]] += count
 
+    # 角度分布
     lines.append("")
     lines.append("--- 角度分布 ---")
-    for k, v in sorted(angle_counts.items(), key=lambda x: -x[1]):
-        bar = "█" * min(v // 5, 30)
-        lines.append(f"  {k:<15} {v:>5}  {bar}")
+    for angle in ANGLE_BINS:
+        count = angle_counts.get(angle, 0)
+        bar = "█" * min(count // 3, 40)
+        lines.append(f"  {angle:<12} {count:>5}  {bar}")
 
+    # 表情分布
     if expr_counts:
         lines.append("")
         lines.append("--- 表情分布 ---")
-        for k, v in sorted(expr_counts.items(), key=lambda x: -x[1]):
-            bar = "█" * min(v // 5, 30)
-            lines.append(f"  {k:<15} {v:>5}  {bar}")
+        for expr in EXPRESSION_BINS:
+            count = expr_counts.get(expr, 0)
+            bar = "█" * min(count // 3, 40)
+            lines.append(f"  {expr:<12} {count:>5}  {bar}")
 
     # 空桶告警
-    all_angles = []
-    for yaw_name, _, _ in YAW_BINS:
-        for pitch_name, _, _ in PITCH_BINS:
-            all_angles.append(f"{yaw_name}_{pitch_name}")
-
-    empty = [a for a in all_angles if angle_counts.get(a, 0) == 0]
-    if empty:
+    empty_angles = [a for a in ANGLE_BINS if angle_counts.get(a, 0) == 0]
+    if empty_angles:
         lines.append("")
-        lines.append("⚠️  缺失角度（需要补充素材）:")
-        for a in empty:
+        lines.append("⚠️  缺失角度（需补充素材）:")
+        for a in empty_angles:
             lines.append(f"  ❌ {a}")
+
+    if expr_counts:
+        empty_expr = [e for e in EXPRESSION_BINS if expr_counts.get(e, 0) == 0]
+        if empty_expr:
+            lines.append("")
+            lines.append("⚠️  缺失表情:")
+            for e in empty_expr:
+                lines.append(f"  ❌ {e}")
 
     lines.append("")
     total = sum(len(v) for v in bins.values())
     lines.append(f"总计: {total} 张 | {len(bins)} 个桶")
+    lines.append("")
+    lines.append("建议: LoRA 训练集每桶 10-30 张，总计 300-800 张为宜")
     return "\n".join(lines)
 
 
@@ -540,7 +675,7 @@ def generate_report(bins: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="人脸图片按角度×表情分类（LoRA 训练数据集策展）",
+        description="人脸分类 v2.0 — 角度×表情分桶（LoRA 数据集策展）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--input", "-i", required=True, help="输入图片目录")
@@ -548,6 +683,8 @@ def main():
     parser.add_argument("--recursive", "-r", action="store_true", help="递归扫描子目录")
     parser.add_argument("--max-per-bin", type=int, default=0, help="每桶最多保留几张（0=不限）")
     parser.add_argument("--no-expression", action="store_true", help="不做表情分类")
+    parser.add_argument("--no-facexformer", action="store_true", help="不用 FaceXFormer")
+    parser.add_argument("--no-fastdup", action="store_true", help="不用 fastdup 去重")
     parser.add_argument("--symlink", action="store_true", help="符号链接代替复制")
     parser.add_argument("--move", action="store_true", help="移动而非复制")
     parser.add_argument("--dedup", type=float, default=0.92, help="去重阈值 (默认0.92，0=禁用)")
