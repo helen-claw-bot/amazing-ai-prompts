@@ -6,7 +6,7 @@ classify_faces.py  v2.0
 方案来源：
     InsightFace（人脸检测+embedding身份确认+去重）
     FaceXFormer（角度/表情/遮挡/闭眼 多任务一体）
-    fastdup（批量去重+模糊检测）
+    imagededup（PHash感知哈希去重，Windows/Linux/Mac兼容）
 
 设计为 extract_face_frames.py 的下游工具：
     extract → 提取人脸帧
@@ -15,7 +15,7 @@ classify_faces.py  v2.0
 依赖安装（numpy 1.26.4 兼容）:
     pip install insightface opencv-python onnxruntime-gpu numpy<2.0
     pip install facexformer_pipeline    # 角度+表情+属性（首次运行自动下载模型）
-    pip install fastdup                  # 去重+模糊检测
+    pip install imagededup              # 感知哈希去重（Windows/Linux/Mac 兼容）
 
 用法:
     # 基本用法（对 extract 输出目录分类）
@@ -27,8 +27,8 @@ classify_faces.py  v2.0
     # 只用 InsightFace（不装 FaceXFormer 也能跑，精度略低）
     python scripts/classify_faces.py -i ./faces -o ./dataset --no-facexformer
 
-    # 跳过 fastdup（不去重，只分类）
-    python scripts/classify_faces.py -i ./faces -o ./dataset --no-fastdup
+    # 跳过 imagededup（不去重，只分类）
+    python scripts/classify_faces.py -i ./faces -o ./dataset --no-imagededup
 
 参数说明:
     --input, -i         输入图片目录
@@ -37,7 +37,7 @@ classify_faces.py  v2.0
     --max-per-bin       每个桶最多保留几张（按质量排序取top，0=不限）
     --no-expression     不做表情分类，只按角度分
     --no-facexformer    不用 FaceXFormer，回退到 InsightFace+规则
-    --no-fastdup        不用 fastdup 去重
+    --no-imagededup     不用 imagededup 去重
     --symlink           符号链接代替复制
     --move              移动而非复制
     --dedup             去重阈值（embedding余弦相似度，默认0.92，0=禁用）
@@ -78,12 +78,12 @@ try:
 except ImportError:
     HAS_FACEXFORMER = False
 
-# fastdup（可选）
+# imagededup（可选）
 try:
-    import fastdup
-    HAS_FASTDUP = True
+    from imagededup.methods import PHash
+    HAS_IMAGEDEDUP = True
 except ImportError:
-    HAS_FASTDUP = False
+    HAS_IMAGEDEDUP = False
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif"}
@@ -308,40 +308,38 @@ def quality_score(img_gray, face) -> float:
 
 
 # ============================================================
-# fastdup 去重
+# imagededup 去重（PHash 感知哈希）
 # ============================================================
 
-def run_fastdup_dedup(image_dir: str, threshold: float = 0.92) -> set:
+def run_imagededup_dedup(image_dir: str, threshold: int = 10) -> set:
     """
-    用 fastdup 找出重复/近似图片，返回应该被移除的文件路径集合。
+    用 imagededup PHash 找出近似重复图片，返回应该被移除的文件名集合。
+    threshold: 汉明距离阈值，越小越严格（默认10，适合视频连续帧）
     """
-    if not HAS_FASTDUP:
+    if not HAS_IMAGEDEDUP:
         return set()
 
-    print(f"\n🔄 fastdup 去重分析...")
-    import tempfile
-    work_dir = tempfile.mkdtemp(prefix="fastdup_")
+    print(f"\n🔄 imagededup PHash 去重分析 (阈值={threshold})...")
 
     try:
-        fd = fastdup.create(work_dir=work_dir, input_dir=image_dir)
-        fd.run(threshold=threshold, cc_threshold=threshold)
+        phasher = PHash()
+        encodings = phasher.encode_images(image_dir=image_dir)
+        duplicates = phasher.find_duplicates(encoding_map=encodings, max_distance_threshold=threshold)
 
-        # 获取重复组
-        duplicates = fd.duplicates()
+        # 贪心选择：每组保留第一个，标记其余为重复
         remove_set = set()
-        if duplicates is not None and len(duplicates) > 0:
-            # duplicates 是 DataFrame: [from, to, distance]
-            # 每组保留第一个（质量排序后面再做），标记其余为重复
-            for _, row in duplicates.iterrows():
-                remove_set.add(row['to'])
+        for filename, dups in duplicates.items():
+            if filename in remove_set:
+                continue
+            for dup in dups:
+                if dup not in remove_set:
+                    remove_set.add(dup)
 
-        print(f"   fastdup 标记 {len(remove_set)} 张为重复")
+        print(f"   imagededup 标记 {len(remove_set)} 张为重复")
         return remove_set
     except Exception as e:
-        print(f"⚠️  fastdup 运行失败: {e}，跳过去重")
+        print(f"⚠️  imagededup 运行失败: {e}，跳过去重")
         return set()
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 # ============================================================
@@ -399,7 +397,7 @@ def process_images(args):
     print(f"  输出: {args.output}")
     print(f"  递归: {'是' if args.recursive else '否'}")
     print(f"  FaceXFormer: {'关闭' if args.no_facexformer else ('可用' if HAS_FACEXFORMER else '未安装')}")
-    print(f"  fastdup: {'关闭' if args.no_fastdup else ('可用' if HAS_FASTDUP else '未安装')}")
+    print(f"  imagededup: {'关闭' if args.no_imagededup else ('可用' if HAS_IMAGEDEDUP else '未安装')}")
     print(f"  去重阈值: {args.dedup if args.dedup > 0 else '禁用'}")
     print(f"  每桶上限: {args.max_per_bin or '不限'}")
     print(f"  表情分类: {'关闭' if args.no_expression else '开启'}")
@@ -412,13 +410,13 @@ def process_images(args):
         print("⚠️  没找到图片")
         return
 
-    # ---- Stage 0: fastdup 预去重 ----
-    fastdup_remove = set()
-    if not args.no_fastdup and HAS_FASTDUP and args.dedup > 0:
-        fastdup_remove = run_fastdup_dedup(args.input, threshold=args.dedup)
-        if fastdup_remove:
-            images = [p for p in images if str(p) not in fastdup_remove and p.name not in fastdup_remove]
-            print(f"   fastdup 后剩余: {len(images)} 张")
+    # ---- Stage 0: imagededup 预去重 ----
+    imagededup_remove = set()
+    if not args.no_imagededup and HAS_IMAGEDEDUP and args.dedup > 0:
+        imagededup_remove = run_imagededup_dedup(args.input, threshold=10)
+        if imagededup_remove:
+            images = [p for p in images if p.name not in imagededup_remove]
+            print(f"   imagededup 后剩余: {len(images)} 张")
 
     # ---- Stage 1: 加载模型 ----
     app = load_face_app(args.model_dir)
@@ -508,7 +506,7 @@ def process_images(args):
     print(f"   跳过: 无人脸 {skipped['no_face']}, 质量过低 {skipped['low_quality']}")
 
     # ---- Stage 3: 桶内 embedding 去重 ----
-    if args.dedup > 0 and not fastdup_remove:
+    if args.dedup > 0 and not imagededup_remove:
         # 如果 fastdup 没跑或没装，用 embedding 去重
         print(f"\n🔄 桶内 embedding 去重 (阈值={args.dedup})...")
         before = sum(len(v) for v in bins.values())
@@ -684,7 +682,7 @@ def main():
     parser.add_argument("--max-per-bin", type=int, default=0, help="每桶最多保留几张（0=不限）")
     parser.add_argument("--no-expression", action="store_true", help="不做表情分类")
     parser.add_argument("--no-facexformer", action="store_true", help="不用 FaceXFormer")
-    parser.add_argument("--no-fastdup", action="store_true", help="不用 fastdup 去重")
+    parser.add_argument("--no-imagededup", action="store_true", help="不用 imagededup 去重")
     parser.add_argument("--symlink", action="store_true", help="符号链接代替复制")
     parser.add_argument("--move", action="store_true", help="移动而非复制")
     parser.add_argument("--dedup", type=float, default=0.92, help="去重阈值 (默认0.92，0=禁用)")
