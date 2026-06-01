@@ -53,7 +53,9 @@ except ImportError:
 
 def score_blur(img_gray, face_box=None):
     """清晰度评分 (0-100)
-    基于Laplacian方差，如果有face_box则只评估人脸区域
+    基于Laplacian方差对数映射，如果有face_box则只评估人脸区域
+    参考: <30严重模糊, 30-55模糊, 55-75尚可, 75-90清晰, >90非常清晰
+    对数映射: lap_var≈10→25, ≈100→50, ≈1000→75, ≈10000→100
     """
     if face_box is not None:
         x1, y1, x2, y2 = face_box
@@ -63,8 +65,64 @@ def score_blur(img_gray, face_box=None):
     else:
         roi = img_gray
     lap_var = cv2.Laplacian(roi, cv2.CV_64F).var()
-    # 映射: 0-500+ → 0-100, 超过500算满分
-    return min(lap_var / 5.0, 100.0)
+    if lap_var <= 0:
+        return 0.0
+    # 对数映射: log10(lap_var+1)/4 * 100, lap_var=10000时满分
+    return min(float(np.log10(lap_var + 1) / 4.0 * 100), 100.0)
+
+
+def score_blur_landmarks(img_gray, face, face_box=None):
+    """清晰度评分——关键点改进版 (0-100)
+    基于人脸5点关键点，分别计算双眼(各40%)和嘴巴(20%)区域的清晰度，加权合并。
+
+    度量方式：Laplacian 绝对值的 top-10% 像素均值（而非全区域方差）。
+    原因：方差会被 patch 内大面积光滑皮肤稀释——近景脸大 patch 大导致分低，
+    远景脸小 patch 小反而分高。高百分位均值只看最锐利边缘，不受平滑区影响。
+
+    对数映射比例系数 2.0：top-10%均值典型范围 ~2-100（vs 方差 ~10-10000），
+    log10(100+1)/2.0≈100，与 score_blur 量纲兼容。
+    """
+    kps = face.kps  # [左眼, 右眼, 鼻尖, 左嘴角, 右嘴角]
+    h, w = img_gray.shape[:2]
+
+    eye_dist = abs(float(kps[1][0]) - float(kps[0][0]))
+    if eye_dist < 4:
+        return score_blur(img_gray, face_box)
+
+    half = max(int(eye_dist * 0.38), 10)
+
+    def _roi_sharpness(cx, cy, hw, hh):
+        x1 = max(0, int(cx - hw))
+        y1 = max(0, int(cy - hh))
+        x2 = min(w, int(cx + hw))
+        y2 = min(h, int(cy + hh))
+        if (x2 - x1) < 4 or (y2 - y1) < 4:
+            return None
+        roi = img_gray[y1:y2, x1:x2]
+        lap = np.abs(cv2.Laplacian(roi, cv2.CV_64F))
+        # top-10% 像素均值：只看最锐利边缘，不被平滑皮肤区拖低
+        threshold = np.percentile(lap, 90)
+        return float(lap[lap >= threshold].mean())
+
+    val_le = _roi_sharpness(kps[0][0], kps[0][1], half, half)
+    val_re = _roi_sharpness(kps[1][0], kps[1][1], half, half)
+
+    mx = (float(kps[3][0]) + float(kps[4][0])) / 2
+    my = (float(kps[3][1]) + float(kps[4][1])) / 2
+    mouth_hw = max(int(abs(float(kps[4][0]) - float(kps[3][0])) * 0.6), int(half * 0.6))
+    mouth_hh = max(int(eye_dist * 0.22), 8)
+    val_mouth = _roi_sharpness(mx, my, mouth_hw, mouth_hh)
+
+    regions = [(val_le, 0.4), (val_re, 0.4), (val_mouth, 0.2)]
+    total_w = sum(wt for v, wt in regions if v is not None)
+    if total_w == 0:
+        return score_blur(img_gray, face_box)
+
+    sharpness = sum(v * wt for v, wt in regions if v is not None) / total_w
+    if sharpness <= 0:
+        return 0.0
+    # 对数映射：除数 2.0 对应 top-10%均值量级（满分约 val≈100）
+    return min(float(np.log10(sharpness + 1) / 2.0 * 100), 100.0)
 
 
 def score_angle(face):
@@ -151,16 +209,22 @@ def score_aspect_ratio(face_box, img_shape):
 
 
 def classify_composition(face_box, img_shape):
-    """构图分类: closeup / halfbody / fullbody / other"""
-    x1, y1, x2, y2 = face_box
-    face_area = (x2 - x1) * (y2 - y1)
-    img_area = img_shape[0] * img_shape[1]
-    ratio = face_area / max(img_area, 1)
-    if ratio > 0.40:
+    """构图分类: closeup / halfbody / fullbody / distant
+    用脸高占图高的比值判断，比面积比更符合摄影构图直觉。
+    closeup  : 脸高 > 45% 图高（特写）
+    halfbody : 25%–45%（中近景/半身）
+    fullbody : 10%–25%（中景/全身）
+    distant  : < 10%（远景）
+    """
+    _, y1, _, y2 = face_box
+    face_h = y2 - y1
+    img_h = img_shape[0]
+    h_ratio = face_h / max(img_h, 1)
+    if h_ratio > 0.45:
         return "closeup"
-    elif ratio > 0.15:
+    elif h_ratio > 0.25:
         return "halfbody"
-    elif ratio > 0.05:
+    elif h_ratio > 0.10:
         return "fullbody"
     else:
         return "distant"
@@ -274,7 +338,7 @@ def rate_image(app, img_path, weights):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # 各维度评分
-    blur = score_blur(gray, face_box)
+    blur = score_blur_landmarks(gray, face, face_box)
     angle = score_angle(face)
     size = score_face_size(face_box, img.shape)
     completeness = score_completeness(face)

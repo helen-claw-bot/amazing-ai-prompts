@@ -39,10 +39,26 @@ THUMB_SIZE = 300  # 缩略图宽度
 # 数据库
 # ============================================================
 
+def _decode(v):
+    """将 bytes 解码为 str，兼容 UTF-8 / GBK；非 bytes 直接返回。"""
+    if not isinstance(v, bytes):
+        return v
+    try:
+        return v.decode('utf-8')
+    except UnicodeDecodeError:
+        return v.decode('gbk', errors='replace')
+
+
+def _row_to_dict(row):
+    """sqlite3.Row → dict，所有 bytes 值自动解码。"""
+    return {k: _decode(v) for k, v in dict(row).items()}
+
+
 @contextmanager
 def get_db():
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.text_factory = _decode  # 处理 TEXT 列
     try:
         yield conn
     finally:
@@ -124,7 +140,7 @@ def list_images(
             params + [page_size, offset]
         ).fetchall()
 
-    images = [dict(r) for r in rows]
+    images = [_row_to_dict(r) for r in rows]
     return {
         "total": total,
         "page": page,
@@ -153,10 +169,10 @@ def get_stats():
 
     return {
         "total": total,
-        "grades": {r["grade"]: r["cnt"] for r in grades},
-        "compositions": {r["composition"]: r["cnt"] for r in compositions},
-        "folders": {r["folder"]: r["cnt"] for r in folders},
-        "averages": dict(avg_scores) if avg_scores else {},
+        "grades": {_decode(r["grade"]): r["cnt"] for r in grades},
+        "compositions": {_decode(r["composition"]): r["cnt"] for r in compositions},
+        "folders": {_decode(r["folder"]): r["cnt"] for r in folders},
+        "averages": _row_to_dict(avg_scores) if avg_scores else {},
     }
 
 
@@ -165,7 +181,7 @@ def get_folders():
     """获取所有文件夹列表"""
     with get_db() as conn:
         rows = conn.execute("SELECT DISTINCT folder FROM images ORDER BY folder").fetchall()
-    return [r["folder"] for r in rows]
+    return [_decode(r["folder"]) for r in rows]
 
 
 @app.post("/api/images/mark")
@@ -260,22 +276,16 @@ async def recalculate(request: Request):
 # 缩略图
 # ============================================================
 
-@app.get("/api/thumbnail/{folder}/{filename}")
-def get_thumbnail(folder: str, filename: str):
+@app.get("/api/thumbnail/{filepath:path}")
+def get_thumbnail(filepath: str):
     """获取缩略图（按需生成并缓存）"""
-    # 原图路径
-    original = IMAGES_ROOT / folder / filename
+    original = IMAGES_ROOT / filepath
     if not original.exists():
-        # 尝试不带folder
-        original = IMAGES_ROOT / filename
-        if not original.exists():
-            raise HTTPException(404, "Image not found")
+        raise HTTPException(404, f"Image not found: {filepath}")
 
-    # 缩略图缓存路径
-    thumb_path = THUMB_DIR / folder / filename
+    thumb_path = THUMB_DIR / filepath
     if not thumb_path.exists():
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
-        # 生成缩略图
         import cv2
         img = cv2.imread(str(original))
         if img is None:
@@ -289,14 +299,12 @@ def get_thumbnail(folder: str, filename: str):
     return FileResponse(str(thumb_path), media_type="image/jpeg")
 
 
-@app.get("/api/original/{folder}/{filename}")
-def get_original(folder: str, filename: str):
+@app.get("/api/original/{filepath:path}")
+def get_original(filepath: str):
     """获取原图"""
-    original = IMAGES_ROOT / folder / filename
+    original = IMAGES_ROOT / filepath
     if not original.exists():
-        original = IMAGES_ROOT / filename
-        if not original.exists():
-            raise HTTPException(404, "Image not found")
+        raise HTTPException(404, f"Image not found: {filepath}")
     return FileResponse(str(original))
 
 
@@ -419,7 +427,10 @@ HTML_PAGE = """<!DOCTYPE html>
                         </select>
                     </div>
 
-                    <div class="pt-2 border-t border-slate-700">
+                    <div class="pt-2 border-t border-slate-700 space-y-2">
+                        <label class="text-sm text-slate-400">输出目录</label>
+                        <input id="export-dir" type="text" value="E:\\AI\\data\\lora_results"
+                            class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white">
                         <button onclick="exportSelected()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 rounded">
                             导出筛选结果
                         </button>
@@ -559,8 +570,8 @@ HTML_PAGE = """<!DOCTYPE html>
     function closeLightbox() { document.getElementById('lightbox').classList.remove('active'); }
 
     async function exportSelected() {
-        const dir = prompt('导出目标目录路径:');
-        if (!dir) return;
+        const dir = document.getElementById('export-dir').value.trim();
+        if (!dir) { alert('请填写输出目录'); return; }
         const params = getFilterParams();
         // 获取所有符合条件的路径
         params.set('page_size', '100000');
@@ -590,6 +601,26 @@ HTML_PAGE = """<!DOCTYPE html>
 # 启动
 # ============================================================
 
+def _migrate_folder_paths():
+    """将 DB 里的 folder 修正为相对于 IMAGES_ROOT 的路径（如 CHTT/S01E01_faces）。"""
+    with get_db() as conn:
+        rows = conn.execute("SELECT path, filename, folder FROM images").fetchall()
+        updates = []
+        for row in rows:
+            full_path = Path(_decode(row["path"]))
+            try:
+                rel = full_path.parent.relative_to(IMAGES_ROOT)
+                new_folder = rel.as_posix()  # 统一用 / 分隔
+            except ValueError:
+                continue
+            if new_folder != _decode(row["folder"]):
+                updates.append((new_folder, _decode(row["path"])))
+        if updates:
+            conn.executemany("UPDATE images SET folder = ? WHERE path = ?", updates)
+            conn.commit()
+            print(f"   迁移 folder 路径: 更新了 {len(updates)} 条记录")
+
+
 def main():
     global DB_PATH, IMAGES_ROOT, THUMB_DIR
 
@@ -609,6 +640,9 @@ def main():
         print(f"❌ 数据库不存在: {DB_PATH}")
         print(f"   请先运行评级脚本: python scripts/rate_face_images.py --input {IMAGES_ROOT}")
         sys.exit(1)
+
+    # 迁移 folder 为相对于 IMAGES_ROOT 的路径（含多级子目录）
+    _migrate_folder_paths()
 
     print(f"🦐 Web选图服务启动中...")
     print(f"   数据库: {DB_PATH}")

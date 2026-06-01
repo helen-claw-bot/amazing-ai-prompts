@@ -4,13 +4,13 @@ classify_faces.py  v2.0
 将人脸图片按 角度×表情 分类到子文件夹，用于 LoRA 训练数据集策展。
 
 方案来源：
-    InsightFace（人脸检测+embedding身份确认+去重）
+    InsightFace（人脸检测+身份确认）
     FaceXFormer（角度/表情/遮挡/闭眼 多任务一体）
     imagededup（PHash感知哈希去重，Windows/Linux/Mac兼容）
 
 设计为 extract_face_frames.py 的下游工具：
     extract → 提取人脸帧
-    classify → 按角度×表情分桶、去重、质量排序
+    classify → 按角度×表情分桶、去重
 
 依赖安装（numpy 1.26.4 兼容）:
     pip install insightface opencv-python onnxruntime-gpu numpy<2.0
@@ -19,29 +19,23 @@ classify_faces.py  v2.0
 
 用法:
     # 基本用法（对 extract 输出目录分类）
-    python scripts/classify_faces.py -i E:\\AI\\LZJ_faces -o E:\\AI\\LZJ_classified --report
+    python scripts/classify_faces.py -i E:\\AI\\downloads\\CHTT\\S01E01_faces -o E:\\AI\\data\\lora_results\\CHTT\\EP01_classified --report
 
     # 完整 pipeline（去重 + 每桶限30张）
     python scripts/classify_faces.py -i ./faces -o ./dataset --max-per-bin 30 --report
 
-    # 只用 InsightFace（不装 FaceXFormer 也能跑，精度略低）
-    python scripts/classify_faces.py -i ./faces -o ./dataset --no-facexformer
-
     # 跳过 imagededup（不去重，只分类）
-    python scripts/classify_faces.py -i ./faces -o ./dataset --no-imagededup
+    python scripts/classify_faces.py -i E:\\AI\\downloads\\CHTT\\S01E01_faces -o E:\\AI\\data\\lora_results\\CHTT\\EP01_classified --no-imagededup
 
 参数说明:
     --input, -i         输入图片目录
     --output, -o        输出分类目录
     --recursive, -r     递归扫描子目录
-    --max-per-bin       每个桶最多保留几张（按质量排序取top，0=不限）
+    --max-per-bin       每个桶最多保留几张（0=不限）
     --no-expression     不做表情分类，只按角度分
-    --no-facexformer    不用 FaceXFormer，回退到 InsightFace+规则
     --no-imagededup     不用 imagededup 去重
     --symlink           符号链接代替复制
     --move              移动而非复制
-    --dedup             去重阈值（embedding余弦相似度，默认0.92，0=禁用）
-    --min-quality       最低质量分（默认0）
     --model-dir         InsightFace 模型目录
     --report            生成统计报告
 """
@@ -207,49 +201,6 @@ class FaceXFormerAnalyzer:
 
 
 # ============================================================
-# InsightFace fallback 方案（不需要 FaceXFormer）
-# ============================================================
-
-def estimate_pose_insightface(face) -> tuple:
-    """从 InsightFace 获取 yaw, pitch"""
-    if hasattr(face, 'pose') and face.pose is not None and len(face.pose) >= 2:
-        return float(face.pose[0]), float(face.pose[1])
-
-    # fallback: 关键点估算
-    kps = face.kps
-    left_eye, right_eye, nose = kps[0], kps[1], kps[2]
-    eye_center_x = (left_eye[0] + right_eye[0]) / 2
-    eye_width = abs(right_eye[0] - left_eye[0])
-    if eye_width < 3:
-        return 0.0, 0.0
-    offset = (nose[0] - eye_center_x) / eye_width
-    yaw = offset * 60
-    return yaw, 0.0
-
-
-def estimate_expression_rule(face) -> str:
-    """基于关键点的简易表情规则"""
-    kps = face.kps
-    left_eye, right_eye = kps[0], kps[1]
-    left_mouth, right_mouth = kps[3], kps[4]
-
-    eye_dist = abs(float(right_eye[0]) - float(left_eye[0]))
-    if eye_dist < 3:
-        return "neutral"
-
-    mouth_width = abs(float(right_mouth[0]) - float(left_mouth[0]))
-    ratio = mouth_width / eye_dist
-
-    if ratio > 1.2:
-        return "laugh"
-    elif ratio > 1.05:
-        return "smile"
-    elif ratio < 0.7:
-        return "mouth_open"
-    return "neutral"
-
-
-# ============================================================
 # 模型初始化
 # ============================================================
 
@@ -277,34 +228,6 @@ def load_face_app(model_dir=None):
                 print(f"⚠️  {name} 未使用 CUDA")
         print(f"   {len(app.models)} 个子模型已加载")
     return app
-
-
-# ============================================================
-# 质量评分
-# ============================================================
-
-def quality_score(img_gray, face) -> float:
-    """
-    质量评分 0-100
-    Laplacian top-10% 均值（抗皮肤稀释）+ 检测置信度
-    """
-    box = face.bbox.astype(int)
-    h, w = img_gray.shape[:2]
-    x1, y1 = max(0, box[0]), max(0, box[1])
-    x2, y2 = min(w, box[2]), min(h, box[3])
-
-    if (x2 - x1) < 10 or (y2 - y1) < 10:
-        return 0.0
-
-    roi = img_gray[y1:y2, x1:x2]
-    lap = np.abs(cv2.Laplacian(roi, cv2.CV_64F))
-    threshold = np.percentile(lap, 90)
-    top_pixels = lap[lap >= threshold]
-    sharpness = float(top_pixels.mean()) if top_pixels.size > 0 else 0.0
-
-    det_score = float(face.det_score) * 100
-    sharp_score = min(sharpness / 30.0 * 100, 100.0)
-    return sharp_score * 0.6 + det_score * 0.4
 
 
 # ============================================================
@@ -343,40 +266,6 @@ def run_imagededup_dedup(image_dir: str, threshold: int = 10) -> set:
 
 
 # ============================================================
-# embedding 去重（fallback / 补充）
-# ============================================================
-
-def cosine_similarity(a, b):
-    return float(np.dot(a, b))
-
-
-def deduplicate_by_embedding(items: list, thresh: float) -> list:
-    """贪心去重：按质量降序，相似度超阈值的丢弃"""
-    if not items or thresh <= 0:
-        return items
-
-    items.sort(key=lambda x: x["quality"], reverse=True)
-    keep = [items[0]]
-
-    for item in items[1:]:
-        if item["embedding"] is None:
-            keep.append(item)
-            continue
-        is_dup = False
-        for kept in keep:
-            if kept["embedding"] is None:
-                continue
-            sim = cosine_similarity(item["embedding"], kept["embedding"])
-            if sim > thresh:
-                is_dup = True
-                break
-        if not is_dup:
-            keep.append(item)
-
-    return keep
-
-
-# ============================================================
 # 主流程
 # ============================================================
 
@@ -396,9 +285,8 @@ def process_images(args):
     print(f"  输入: {args.input}")
     print(f"  输出: {args.output}")
     print(f"  递归: {'是' if args.recursive else '否'}")
-    print(f"  FaceXFormer: {'关闭' if args.no_facexformer else ('可用' if HAS_FACEXFORMER else '未安装')}")
+    print(f"  FaceXFormer: {'可用' if HAS_FACEXFORMER else '未安装'}")
     print(f"  imagededup: {'关闭' if args.no_imagededup else ('可用' if HAS_IMAGEDEDUP else '未安装')}")
-    print(f"  去重阈值: {args.dedup if args.dedup > 0 else '禁用'}")
     print(f"  每桶上限: {args.max_per_bin or '不限'}")
     print(f"  表情分类: {'关闭' if args.no_expression else '开启'}")
     print(f"{'='*60}\n")
@@ -412,7 +300,7 @@ def process_images(args):
 
     # ---- Stage 0: imagededup 预去重 ----
     imagededup_remove = set()
-    if not args.no_imagededup and HAS_IMAGEDEDUP and args.dedup > 0:
+    if not args.no_imagededup and HAS_IMAGEDEDUP:
         imagededup_remove = run_imagededup_dedup(args.input, threshold=10)
         if imagededup_remove:
             images = [p for p in images if p.name not in imagededup_remove]
@@ -421,17 +309,15 @@ def process_images(args):
     # ---- Stage 1: 加载模型 ----
     app = load_face_app(args.model_dir)
 
-    fxf = None
-    if not args.no_facexformer and HAS_FACEXFORMER:
-        fxf = FaceXFormerAnalyzer()
-    elif not args.no_facexformer and not HAS_FACEXFORMER:
-        print("⚠️  FaceXFormer 未安装，回退到 InsightFace+规则")
-        print("   安装: pip install facexformer_pipeline")
+    if not HAS_FACEXFORMER:
+        print("❌ FaceXFormer 未安装: pip install facexformer_pipeline")
+        sys.exit(1)
+    fxf = FaceXFormerAnalyzer()
 
     # ---- Stage 2: 逐图分析 ----
     print(f"\n🔍 分析人脸...")
     bins = defaultdict(list)
-    skipped = {"no_face": 0, "low_quality": 0}
+    skipped = {"no_face": 0}
     t0 = time.time()
 
     for i, img_path in enumerate(images):
@@ -461,17 +347,11 @@ def process_images(args):
             continue
 
         # ---- 角度 + 表情 ----
-        if fxf:
-            # FaceXFormer 分析
-            box = face.bbox.astype(int)
-            fxf_result = fxf.analyze(img, face_box=box)
-            yaw = fxf_result["yaw"]
-            pitch = fxf_result["pitch"]
-            expr_bin = fxf_result["expression_bin"] if not args.no_expression else None
-        else:
-            # InsightFace fallback
-            yaw, pitch = estimate_pose_insightface(face)
-            expr_bin = estimate_expression_rule(face) if not args.no_expression else None
+        box = face.bbox.astype(int)
+        fxf_result = fxf.analyze(img, face_box=box)
+        yaw = fxf_result["yaw"]
+        pitch = fxf_result["pitch"]
+        expr_bin = fxf_result["expression_bin"] if not args.no_expression else None
 
         angle_bin = yaw_pitch_to_angle_bin(yaw, pitch)
 
@@ -681,7 +561,6 @@ def main():
     parser.add_argument("--recursive", "-r", action="store_true", help="递归扫描子目录")
     parser.add_argument("--max-per-bin", type=int, default=0, help="每桶最多保留几张（0=不限）")
     parser.add_argument("--no-expression", action="store_true", help="不做表情分类")
-    parser.add_argument("--no-facexformer", action="store_true", help="不用 FaceXFormer")
     parser.add_argument("--no-imagededup", action="store_true", help="不用 imagededup 去重")
     parser.add_argument("--symlink", action="store_true", help="符号链接代替复制")
     parser.add_argument("--move", action="store_true", help="移动而非复制")
